@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Simple bd wrapper: bd ready -> ./scripts/bd-ready.sh
+case "${1:-}" in
+  ready) exec "$(dirname "$0")/bd-ready.sh" ;;
+  *) echo "Usage: bd ready  # List unblocked tasks"; exit 0 ;;
+esac
