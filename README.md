@@ -9,10 +9,14 @@ A simple full-stack one-page project management app built with **Svelte** (front
 ```
 .
 ├── openspec.md           # Single source-of-truth: architecture, endpoints, data models
+├── docs/
+│   ├── OPPM-Proposal.md  # OPPM template and proposal
+│   └── screenshots/      # Walkthrough screenshots
 ├── .beads/
 │   └── beads.toml        # Beads task tracker (dependencies, status)
 ├── scripts/
-│   └── bd-ready.sh       # List unblocked tasks (bd ready)
+│   ├── bd                # bd ready wrapper
+│   └── bd-ready.sh       # List unblocked tasks
 ├── backend/
 │   ├── main.py           # FastAPI app
 │   └── requirements.txt
@@ -23,7 +27,10 @@ A simple full-stack one-page project management app built with **Svelte** (front
 │   │   ├── stores/todos.js
 │   │   └── components/
 │   │       ├── TodoForm.svelte
-│   │       └── TodoList.svelte
+│   │       ├── TodoList.svelte
+│   │       └── OPPMPage.svelte
+│   ├── scripts/
+│   │   └── screenshot.js # Capture walkthrough screenshots
 │   ├── package.json
 │   ├── vite.config.js
 │   └── index.html
@@ -176,3 +183,68 @@ The backend starts with 3 sample todos:
 - "Set up Beads tracker" (done)
 
 Data is in-memory; it resets on server restart.
+
+---
+
+## App Walkthrough (with Screenshots)
+
+This section walks through the app using mock data. Start the backend and frontend (see [Running the App](#running-the-app)), then open http://localhost:5173.
+
+### 1. Todos View (default)
+
+The default view shows a simple todo list connected to the FastAPI backend:
+
+- **Add tasks** – Enter a title in the input and click Add
+- **Toggle completion** – Check or uncheck items
+- **Delete** – Click the × button to remove a task
+
+![Todos view](docs/screenshots/01-todos-view.png)
+
+### 2. OPPM Tab – One Page Project Manager
+
+Click the **OPPM** tab to view the NASS-style One Page Project Manager layout with mock data (Regional Data Collection Pilot).
+
+#### Header block
+
+Project title, sponsor (NASS Field Operations), PM, dates, reporting period (FY Q2 2026), and version.
+
+#### Objectives column + timeline matrix
+
+Six objectives (O1–O6) with a quarterly matrix:
+
+- **○** = planned milestone  
+- **●** = completed milestone  
+- **△** = risk or decision point  
+
+Each cell shows a short label (e.g., "Kickoff", "Pilot start", "Report draft").
+
+![OPPM full view](docs/screenshots/02-oppm-full.png)
+
+#### Owners
+
+Team initials and roles (JS = PM, JP = Lead Analyst, MS = Field Coordinator, etc.) with owner assigned per objective.
+
+#### Bottom band
+
+- **Budget / Effort** – Total ($170k), spent (23%), bar chart, and % by category
+- **Risks & KPIs** – Top 3 risks with mitigation; 4 KPIs (surveys, QA pass rate, staff trained, deliverables)
+- **Status & Legend** – Overall status (Green/Yellow/Red) and symbol legend
+
+![OPPM matrix](docs/screenshots/03-oppm-matrix.png)
+
+### Capturing Screenshots
+
+To regenerate the walkthrough screenshots:
+
+```bash
+# Terminal 1: Backend
+cd backend && python3 -m uvicorn main:app --reload --port 8000
+
+# Terminal 2: Frontend
+cd frontend && npm run dev
+
+# Terminal 3: Capture
+cd frontend && npm run screenshot
+```
+
+Screenshots are saved to `docs/screenshots/`.
