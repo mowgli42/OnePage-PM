@@ -1,0 +1,49 @@
+# Beads progress tracker for Project Management App
+# Install: cargo install beads-cli (or download binary from releases)
+# Query unblocked: bd ready
+
+[project]
+name = "project-management-app"
+version = "0.1.0"
+
+[[beads]]
+id = "init-backend"
+title = "Initialize FastAPI backend with basic structure"
+status = "done"
+deps = []
+
+[[beads]]
+id = "define-api-routes"
+title = "Define API routes (GET/POST /todos, /health)"
+status = "done"
+deps = ["init-backend"]
+
+[[beads]]
+id = "init-frontend"
+title = "Initialize Svelte frontend (Vite)"
+status = "done"
+deps = []
+
+[[beads]]
+id = "frontend-integration"
+title = "Integrate frontend with backend (fetch, POST todos)"
+status = "done"
+deps = ["define-api-routes", "init-frontend"]
+
+[[beads]]
+id = "mock-data"
+title = "Add sample mock data for prototype"
+status = "done"
+deps = ["define-api-routes"]
+
+[[beads]]
+id = "setup-docs"
+title = "Write README with setup instructions"
+status = "done"
+deps = ["frontend-integration", "mock-data"]
+
+[[beads]]
+id = "customize-app"
+title = "Customize the app (add features, styling)"
+status = "pending"
+deps = ["setup-docs"]
