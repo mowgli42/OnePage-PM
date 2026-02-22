@@ -5,18 +5,38 @@
   import TodoForm from './components/TodoForm.svelte'
   import OPPMPage from './components/OPPMPage.svelte'
 
-  let view = 'todos'
+  function getViewFromUrl() {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+    const v = params.get('view')
+    return v === 'oppm' ? 'oppm' : 'todos'
+  }
 
-  onMount(() => fetchTodos())
+  let view = getViewFromUrl()
+
+  function setView(v) {
+    view = v
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('view', v)
+      window.history.replaceState({}, '', url.pathname + '?' + url.searchParams.toString())
+    }
+  }
+
+  onMount(() => {
+    fetchTodos()
+    const onPopState = () => { view = getViewFromUrl() }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  })
 </script>
 
-<main class="app">
-  <header>
+<main class="app" class:print-oppm={view === 'oppm'}>
+  <header class="app-header">
     <h1>Project Management</h1>
     <p class="subtitle">One-page todo tracker & OPPM</p>
     <div class="tabs">
-      <button class="tab" class:active={view === 'todos'} on:click={() => view = 'todos'}>Todos</button>
-      <button class="tab" class:active={view === 'oppm'} on:click={() => view = 'oppm'}>OPPM</button>
+      <button class="tab" class:active={view === 'todos'} on:click={() => setView('todos')}>Todos</button>
+      <button class="tab" class:active={view === 'oppm'} on:click={() => setView('oppm')}>OPPM</button>
     </div>
   </header>
 
@@ -82,5 +102,11 @@
     background: #fee2e2;
     padding: 0.1em 0.3em;
     border-radius: 4px;
+  }
+
+  @media print {
+    @page { size: A4 landscape; margin: 12mm; }
+    .print-oppm .app-header { display: none !important; }
+    .print-oppm { padding: 0; max-width: none; }
   }
 </style>

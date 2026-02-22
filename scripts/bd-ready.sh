@@ -7,10 +7,11 @@ cd "$(dirname "$0")/.." || true
 BEADS_FILE="${BEADS_FILE:-.beads/beads.toml}"
 [[ -f "$BEADS_FILE" ]] || { echo "No beads file at $BEADS_FILE"; exit 1; }
 
-python3 << 'PY'
-import re, json
+BEADS_FILE="$BEADS_FILE" python3 << 'PY'
+import os, re, json
 
-with open(".beads/beads.toml") as f:
+beads_file = os.environ.get("BEADS_FILE", ".beads/beads.toml")
+with open(beads_file) as f:
     raw = f.read()
 
 beads = []

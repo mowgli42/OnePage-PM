@@ -49,6 +49,18 @@ async function capture() {
   await page.screenshot({ path: join(outDir, '03-oppm-matrix.png'), fullPage: false })
   console.log('Saved 03-oppm-matrix.png')
 
+  // Screenshot 4: Edit plan panel (workflow)
+  await page.click('button:has-text("Edit plan")')
+  await page.waitForSelector('.edit-panel', { timeout: 3000 })
+  await page.screenshot({ path: join(outDir, '04-edit-plan.png'), fullPage: false })
+  console.log('Saved 04-edit-plan.png')
+
+  // Screenshot 5: Schedule section in edit (scroll into view)
+  const scheduleSection = page.locator('.edit-section.schedule-edit').first()
+  await scheduleSection.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: join(outDir, '05-schedule-edit.png'), fullPage: false })
+  console.log('Saved 05-schedule-edit.png')
+
   await browser.close()
 }
 

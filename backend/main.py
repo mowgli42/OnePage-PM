@@ -2,7 +2,10 @@
 FastAPI backend for Project Management App.
 Spec: openspec.md
 """
+import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="Project Management API", version="0.1.0")
+
+# Plan persistence: JSON file path (env PLAN_JSON_PATH or backend/data/plan.json)
+_BACKEND_DIR = Path(__file__).resolve().parent
+PLAN_JSON_PATH = Path(os.environ.get("PLAN_JSON_PATH", _BACKEND_DIR / "data" / "plan.json"))
+PLAN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +48,81 @@ TODOS = [
         "created_at": "2026-02-19T08:30:00Z",
     },
 ]
+
+# Default OPPM plan (same shape as frontend)
+DEFAULT_PLAN = {
+    "header": {
+        "projectTitle": "Regional Data Collection Pilot",
+        "sponsor": "NASS Field Operations",
+        "projectManager": "Jane Smith",
+        "startDate": "Jan 1, 2026",
+        "endDate": "Dec 31, 2026",
+        "reportingPeriod": "FY Q2 2026",
+        "version": "v1.0",
+        "dateUpdated": "Feb 19, 2026",
+    },
+    "quarters": ["Q1 2026", "Q2 2026", "Q3 2026", "Q4 2026"],
+    "objectives": [
+        {"id": "O1", "title": "Launch pilot in 3 regions", "metric": "3/3 regions operational", "owner": "MS"},
+        {"id": "O2", "title": "Complete baseline report", "metric": "Report approved", "owner": "JP"},
+        {"id": "O3", "title": "Establish QA process (95% pass)", "metric": "95% pass rate", "owner": "RK"},
+        {"id": "O4", "title": "Train 20 field staff", "metric": "20 certified", "owner": "MS"},
+        {"id": "O5", "title": "Integrate data into national system", "metric": "API live", "owner": "TL"},
+        {"id": "O6", "title": "Publish lessons learned", "metric": "Document released", "owner": "JS"},
+    ],
+    "matrix": [
+        [{"symbol": "○", "label": "Kickoff"}, {"symbol": "●", "label": "Pilot start"}, {"symbol": "●", "label": "3 regions"}, {"symbol": "○", "label": "Handoff"}],
+        [{"symbol": "○", "label": "Scoping"}, {"symbol": "○", "label": "Analysis"}, {"symbol": "●", "label": "Draft"}, {"symbol": "●", "label": "Approved"}],
+        [{"symbol": "△", "label": "Design QA"}, {"symbol": "○", "label": "Build"}, {"symbol": "○", "label": "Test"}, {"symbol": "●", "label": "95% pass"}],
+        [{"symbol": "○", "label": "Curriculum"}, {"symbol": "●", "label": "Week 1–2"}, {"symbol": "●", "label": "Week 3–4"}, {"symbol": "○", "label": "Certify"}],
+        [{"symbol": "○", "label": "Specs"}, {"symbol": "○", "label": "Dev"}, {"symbol": "△", "label": "UAT"}, {"symbol": "●", "label": "Live"}],
+        [{"symbol": "", "label": ""}, {"symbol": "", "label": ""}, {"symbol": "○", "label": "Draft"}, {"symbol": "●", "label": "Release"}],
+    ],
+    "owners": [
+        {"initials": "JS", "role": "Project Manager"},
+        {"initials": "JP", "role": "Lead Analyst"},
+        {"initials": "MS", "role": "Field Coordinator"},
+        {"initials": "RK", "role": "QA Lead"},
+        {"initials": "TL", "role": "Systems Integrator"},
+    ],
+    "budget": {
+        "total": 170000,
+        "spent": 38300,
+        "categories": [
+            {"name": "Personnel", "planned": 120000, "spent": 35000},
+            {"name": "Travel", "planned": 15000, "spent": 2100},
+            {"name": "Contracts", "planned": 25000, "spent": 0},
+            {"name": "Other", "planned": 10000, "spent": 1200},
+        ],
+    },
+    "risks": [
+        {"text": "Region 3 staffing gap", "owner": "MS", "mitigation": "Backup contractor identified"},
+        {"text": "Data integration delay", "owner": "TL", "mitigation": "Early API testing in Q2"},
+        {"text": "Budget overrun risk", "owner": "JS", "mitigation": "10% contingency held"},
+    ],
+    "kpis": [
+        {"label": "Surveys completed", "value": "250 / 400", "target": True},
+        {"label": "Data quality pass rate", "value": "92%", "target": False},
+        {"label": "Staff trained", "value": "18 / 20", "target": True},
+        {"label": "Deliverables on time", "value": "4 / 5", "target": True},
+    ],
+    "status": {"level": "yellow", "text": "Region 3 data collection delayed 2 weeks; mitigation in progress."},
+}
+
+
+def _load_plan() -> dict:
+    if not PLAN_JSON_PATH.exists():
+        return DEFAULT_PLAN.copy()
+    try:
+        with open(PLAN_JSON_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return DEFAULT_PLAN.copy()
+
+
+def _save_plan(plan: dict) -> None:
+    with open(PLAN_JSON_PATH, "w", encoding="utf-8") as f:
+        json.dump(plan, f, indent=2)
 
 
 class TodoCreate(BaseModel):
@@ -108,6 +191,28 @@ def delete_todo(todo_id: str):
             TODOS.pop(i)
             return
     raise HTTPException(status_code=404, detail="Todo not found")
+
+
+# --- Plan (OPPM) persistence ---
+
+@app.get("/plan")
+def get_plan():
+    """Return the stored project plan (OPPM). Uses JSON file; falls back to default if missing."""
+    return _load_plan()
+
+
+@app.put("/plan")
+def put_plan(plan: dict):
+    """Save the full project plan. Overwrites the JSON file so the plan can be updated in the future."""
+    if not isinstance(plan, dict):
+        raise HTTPException(status_code=422, detail="Body must be a JSON object")
+    # Ensure required top-level keys exist (merge with default so partial saves don't lose sections)
+    merged = {**DEFAULT_PLAN, **plan}
+    for key in DEFAULT_PLAN:
+        if key not in merged or merged[key] is None:
+            merged[key] = DEFAULT_PLAN[key]
+    _save_plan(merged)
+    return merged
 
 
 if __name__ == "__main__":

@@ -45,6 +45,22 @@
 |--------|------|-------------|
 | GET | `/health` | Health check `{ "status": "ok" }` |
 
+### Plan (OPPM)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/plan` | Get the stored project plan (one-page OPPM). Returns default if no file. |
+| PUT | `/plan` | Save the full project plan (body: plan JSON). Persisted to a JSON file for future updates. |
+
+Storage: single JSON file (path from env `PLAN_JSON_PATH` or `backend/data/plan.json`). See [docs/Project-Plan-Persistence-Proposal.md](docs/Project-Plan-Persistence-Proposal.md) for editing and JSON vs SQLite options.
+
+### Error responses
+
+| Status | When | Body |
+|--------|------|------|
+| 404 | Todo not found (GET/PATCH/DELETE `/todos/{id}`) | `{ "detail": "Todo not found" }` |
+| 422 | Validation error (e.g. POST/PATCH body invalid) | `{ "detail": [...] }` (FastAPI validation errors) |
+
 ---
 
 ## 3. Data Models (JSON Schema)
@@ -65,6 +81,10 @@
 - `title`: required, 1–200 chars
 - `completed`: optional, defaults to `false`
 - `id`, `created_at`: server-generated
+
+### Plan (OPPM)
+
+One JSON document with: `header` (projectTitle, sponsor, projectManager, startDate, endDate, reportingPeriod, version, dateUpdated), `quarters` (string array), `objectives` (array of { id, title, metric, owner }), `matrix` (2D array of { symbol, label }), `owners` (array of { initials, role }), `budget` (total, spent, categories: [{ name, planned, spent }]), `risks` (array of { text, owner, mitigation }), `kpis` (array of { label, value, target }), `status` (level, text). PUT merges with server default so partial payloads do not drop sections.
 
 ---
 
@@ -103,3 +123,5 @@
 | Date | Change |
 |------|--------|
 | 2026-02-19 | Initial spec: todos CRUD, health, mock data |
+| 2026-02-22 | Document error responses (404, 422) |
+| 2026-02-22 | Plan (OPPM): GET/PUT /plan, JSON file persistence; proposal for editing and SQLite option |
