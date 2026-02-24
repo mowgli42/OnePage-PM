@@ -158,7 +158,7 @@ flowchart LR
 | 3 | **OPPM:** View one-page plan (header, objectives × timeline matrix, budget, risks, status). |
 | 4 | Click **Edit plan** to open the edit panel (header, time periods, objectives, matrix, budget, status). |
 | 5 | Change fields (e.g. project title, add/remove periods or objectives, set matrix symbols/labels). |
-| 6 | Click **Save plan** to persist to the backend JSON file. |
+| 6 | Click the **save** button (save icon) in the edit panel to persist to the backend JSON file. |
 | 7 | Reload the page (or open in a new tab) – the saved plan is loaded. |
 
 Screenshots for the workflow are in [docs/screenshots/](docs/screenshots/) (see [Capturing screenshots](#capturing-screenshots)).
@@ -251,8 +251,9 @@ For an AI coding agent:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
-| GET | `/plan` | Get project plan (OPPM); default if no file |
-| PUT | `/plan` | Save project plan (body: full plan JSON) |
+| GET | `/plans` | List projects (id, title, projectId, projectNumber) |
+| GET | `/plan` | Get one plan. Query `plan_id` for multi-project. |
+| PUT | `/plan` | Save plan. Query `plan_id` optional. Body: full plan JSON. |
 | GET | `/todos` | List all todos |
 | GET | `/todos/{id}` | Get one todo |
 | POST | `/todos` | Create todo |
@@ -265,13 +266,65 @@ See `openspec.md` for full contracts and examples.
 
 ## Mock Data
 
-The backend starts with 3 sample todos:
+The backend starts with 3 sample todos (in-memory; resets on restart):
 
 - "Ship the app" (pending)
 - "Write OpenSpec" (done)
 - "Set up Beads tracker" (done)
 
-Data is in-memory; it resets on server restart.
+**OPPM projects:** Use the seed script to create 4 mock projects with unique identifiers:
+
+| Project # | File | Title |
+|-----------|------|-------|
+| 1001 | `regional-pilot.json` | Regional Data Collection Pilot |
+| 1002 | `it-migration.json` | IT Migration Project |
+| 1003 | `grant-proposal.json` | Grant Proposal – Research Pilot |
+| 1004 | `product-launch.json` | Product Launch – Q2 |
+
+```bash
+python3 backend/scripts/seed_plans.py
+```
+
+Then start the backend and open the OPPM tab; the plan dropdown will list these projects. Each plan has a **projectId** (UUID) and **projectNumber** (1001–1004) for identification and sharing.
+
+---
+
+## Saving and sharing projects
+
+The app uses **file-based storage** with a **project identifier** so you can host it in the cloud and share JSON across users without a hosted database.
+
+### How it works
+
+- **Storage:** Each project is a JSON file in `backend/data/plans/` (or `PLANS_DIR`). Filename = plan id (e.g. `regional-pilot.json`).
+- **Project identifier:** Every plan has:
+  - **projectId** – UUID set by the server on first save; uniquely identifies the project when sharing or importing.
+  - **projectNumber** – Optional integer (e.g. 1001, 1002) for display; server assigns the next available number if missing.
+- **No hosted DB required:** The backend only reads/writes JSON files. You can run it locally, on a VPS, or in a container; multiple users see the same data if they use the same backend (e.g. same server or same shared volume).
+
+### Workflow
+
+1. **Local / single user**  
+   Run backend + frontend. Create or edit plans; save. Data lives in `backend/data/plans/`.
+
+2. **Cloud-hosted, shared**  
+   Deploy the app (e.g. Fly.io, Railway, or a VM) with a **persistent volume** (or S3-backed storage if you add it). Point `PLANS_DIR` at that volume. Everyone who opens the app uses the same backend and the same JSON files.
+
+3. **Share without hosting**  
+   - **Export:** Copy the project JSON file from `PLANS_DIR/<id>.json`, or use GET `/plan?plan_id=<id>` and save the response.
+   - **Share:** Send the file (email, drive, link to raw file).
+   - **Import:** Put the JSON file into `PLANS_DIR` with a filename that becomes the plan id (e.g. `new-project.json`). The existing **projectId** in the JSON keeps the project uniquely identified; no duplicate IDs if you merge later.
+
+4. **New project**  
+   Add a new JSON file in `PLANS_DIR` (or save from the app with a new plan id). The server will assign **projectId** (UUID) and **projectNumber** (next free number) on first save.
+
+### Summary
+
+| Goal | Approach |
+|------|----------|
+| Run locally | Backend + frontend; data in `backend/data/plans/`. |
+| Share across team | Deploy backend with shared volume; everyone uses same URL. |
+| Share without central host | Export project JSON; others import the file into their `PLANS_DIR`. |
+| Uniquely identify a project | Use **projectId** (UUID) in the JSON; **projectNumber** for human reference. |
 
 ---
 
@@ -290,7 +343,7 @@ This app can be used as a **one-page PM / proposal view** linked from [Project-A
 
 You can **edit** the one-page plan (header, status, budget) and **save** it so it can be updated later:
 
-- Open the **OPPM** tab, click **Edit plan**, change fields (project title, sponsor, dates, status, budget totals and categories), then click **Save plan**.
+- Open the **OPPM** tab, click **Edit plan** (pencil icon in the header), change fields (project title, sponsor, dates, status, budget categories). Budget totals are calculated from category line items so you can see allocated vs spent. Then click the **save** button (save icon) to persist.
 - The plan is stored in a **JSON file** by the backend (`backend/data/plan.json` by default; override with env `PLAN_JSON_PATH`). On the next load, the saved plan is used.
 - For the full proposal (editing scope, JSON vs SQLite), see [docs/Project-Plan-Persistence-Proposal.md](docs/Project-Plan-Persistence-Proposal.md).
 
@@ -353,7 +406,7 @@ Team initials and roles (JS = PM, JP = Lead Analyst, MS = Field Coordinator, etc
 
 ### 3. Edit plan (workflow)
 
-Click **Edit plan** on the OPPM tab to open the edit panel. Change header, time periods, objectives, schedule matrix (symbol + label per cell), budget, and status; then **Save plan** to persist.
+Click **Edit plan** (pencil icon) on the OPPM tab to open the edit panel. Change header, time periods, objectives, schedule matrix (symbol + label per cell), budget categories (totals are calculated from the rows), and status; then click the **save** button (save icon) to persist.
 
 ![Edit plan panel](docs/screenshots/04-edit-plan.png)
 

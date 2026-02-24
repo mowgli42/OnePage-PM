@@ -1,9 +1,11 @@
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 
 const API = 'http://localhost:8000'
 
 /** Default plan when API is unavailable or file is missing (must match backend shape). */
 export const defaultPlan = {
+  projectId: null,
+  projectNumber: null,
   header: { projectTitle: 'Regional Data Collection Pilot', sponsor: 'NASS Field Operations', projectManager: 'Jane Smith', startDate: 'Jan 1, 2026', endDate: 'Dec 31, 2026', reportingPeriod: 'FY Q2 2026', version: 'v1.0', dateUpdated: 'Feb 19, 2026' },
   quarters: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
   objectives: [
@@ -48,14 +50,36 @@ export const plan = writable(null)
 export const planLoading = writable(false)
 export const planSaving = writable(false)
 export const planError = writable(null)
+export const oppmEditing = writable(false)
+/** List of { id, title } from GET /plans */
+export const plansList = writable([])
+/** Currently selected plan id (for multi-plan). */
+export const currentPlanId = writable(null)
 
-export async function fetchPlan() {
+export async function fetchPlans() {
+  try {
+    const res = await fetch(`${API}/plans`)
+    if (!res.ok) return
+    const list = await res.json()
+    plansList.set(Array.isArray(list) ? list : [])
+    if (list?.length && !get(currentPlanId)) currentPlanId.set(list[0].id)
+    return list
+  } catch (_) {
+    plansList.set([])
+    return []
+  }
+}
+
+export async function fetchPlan(planId = null) {
   planLoading.set(true)
   planError.set(null)
+  const id = planId ?? get(currentPlanId)
   try {
-    const res = await fetch(`${API}/plan`)
+    const url = id ? `${API}/plan?plan_id=${encodeURIComponent(id)}` : `${API}/plan`
+    const res = await fetch(url)
+    const data = res.ok ? await res.json() : null
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
+    if (id) currentPlanId.set(id)
     plan.set(data)
     return data
   } catch (e) {
@@ -67,11 +91,13 @@ export async function fetchPlan() {
   }
 }
 
-export async function savePlan(planData) {
+export async function savePlan(planData, planId = null) {
   planSaving.set(true)
   planError.set(null)
+  const id = planId ?? get(currentPlanId)
   try {
-    const res = await fetch(`${API}/plan`, {
+    const url = id ? `${API}/plan?plan_id=${encodeURIComponent(id)}` : `${API}/plan`
+    const res = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(planData),

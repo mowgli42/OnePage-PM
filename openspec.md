@@ -10,8 +10,8 @@
 ```
 ┌─────────────────────┐     JSON over HTTP      ┌─────────────────────┐
 │  Svelte Frontend    │ ◄─────────────────────► │  FastAPI Backend    │
-│  - Minimal stores   │    GET/POST /todos       │  - In-memory store  │
-│  - One-page app     │                         │  - Port 8000        │
+│  - Minimal stores   │  GET/PUT /plan,         │  - In-memory store  │
+│  - One-page OPPM    │  GET/POST /todos        │  - Port 8000        │
 └─────────────────────┘                         └─────────────────────┘
         Port 5173 (Vite)                                  │
                                                           │
@@ -49,10 +49,11 @@
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/plan` | Get the stored project plan (one-page OPPM). Returns default if no file. |
-| PUT | `/plan` | Save the full project plan (body: plan JSON). Persisted to a JSON file for future updates. |
+| GET | `/plans` | List available plans: `[{ "id", "title", "projectId", "projectNumber" }, ...]` from PLANS_DIR (or legacy single file as one entry). |
+| GET | `/plan` | Get one plan. Query `plan_id` (optional): load from PLANS_DIR or legacy file. |
+| PUT | `/plan` | Save the full project plan. Query `plan_id` (optional). Body: plan JSON. |
 
-Storage: single JSON file (path from env `PLAN_JSON_PATH` or `backend/data/plan.json`). See [docs/Project-Plan-Persistence-Proposal.md](docs/Project-Plan-Persistence-Proposal.md) for editing and JSON vs SQLite options.
+Storage: multiple plans in directory (env `PLANS_DIR`, default `backend/data/plans/`) as `<id>.json`; or single file via `PLAN_JSON_PATH` (legacy). See [docs/Project-Plan-Persistence-Proposal.md](docs/Project-Plan-Persistence-Proposal.md).
 
 ### Error responses
 
@@ -84,11 +85,25 @@ Storage: single JSON file (path from env `PLAN_JSON_PATH` or `backend/data/plan.
 
 ### Plan (OPPM)
 
-One JSON document with: `header` (projectTitle, sponsor, projectManager, startDate, endDate, reportingPeriod, version, dateUpdated), `quarters` (string array), `objectives` (array of { id, title, metric, owner }), `matrix` (2D array of { symbol, label }), `owners` (array of { initials, role }), `budget` (total, spent, categories: [{ name, planned, spent }]), `risks` (array of { text, owner, mitigation }), `kpis` (array of { label, value, target }), `status` (level, text). PUT merges with server default so partial payloads do not drop sections.
+One JSON document with: **`projectId`** (UUID string, unique across projects; set by server on first save if missing), **`projectNumber`** (optional integer, e.g. 1001, for display/reference; server assigns next available if missing), `header`, `quarters`, `objectives`, `matrix`, `owners`, `budget`, `risks`, `kpis`, `status`. PUT merges with server default so partial payloads do not drop sections. Project identifiers support sharing and importing projects across instances.
 
 ---
 
-## 4. Example Payloads
+## 4. Display Items (UI)
+
+UI elements derived from the API and data models for the frontend facelift:
+
+| Area | Display items |
+|------|----------------|
+| **App shell** | App title, subtitle, view switcher (Todos \| OPPM), backend error banner |
+| **Todos view** | Add-todo form (input + Add button), todo list (checkbox, title, completed state, delete), empty/loading states |
+| **OPPM view** | Action bar (Print one page, Edit plan / Save / Cancel, hint); error/loading messages; edit panel (Header, Status, Budget, Schedule: periods, objectives, matrix); read-only: header block (project, sponsor, PM, dates, period, version); objectives × quarters matrix (symbol + label per cell); owners legend; bottom band: Budget (total, spent, bar, categories), Risks & KPIs, Status & legend (○●△) |
+
+Design system (v2.0): typography (display + body pair), color palette (base, surface, accent), spacing, focus states, print-preserving layout.
+
+---
+
+## 5. Example Payloads
 
 **POST /todos**
 
@@ -118,10 +133,14 @@ One JSON document with: `header` (projectTitle, sponsor, projectManager, startDa
 
 ---
 
-## 5. Revision Log
+## 6. Revision Log
 
 | Date | Change |
 |------|--------|
 | 2026-02-19 | Initial spec: todos CRUD, health, mock data |
 | 2026-02-22 | Document error responses (404, 422) |
 | 2026-02-22 | Plan (OPPM): GET/PUT /plan, JSON file persistence; proposal for editing and SQLite option |
+| 2026-02-22 | Architecture diagram: add GET/PUT /plan; frontend print: one-page landscape, bottom band in two columns (Budget, Risks+Status) |
+| 2026-02-22 | Display items (UI): section 4 listing app shell, Todos view, OPPM view; design system v2.0 reference |
+| 2026-02-22 | Frontend 2.0 facelift: design system (Fraunces + Source Sans 3, slate/cream/amber), app shell tabs, TodoForm/TodoList/OPPM styling, a11y (focus, aria) |
+| 2026-02-22 | Plan: projectId (UUID) and projectNumber; GET /plans returns both; PUT ensures projectId/projectNumber for sharing; README workflow and mock data (4 projects) |

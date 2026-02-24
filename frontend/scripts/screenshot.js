@@ -49,8 +49,8 @@ async function capture() {
   await page.screenshot({ path: join(outDir, '03-oppm-matrix.png'), fullPage: false })
   console.log('Saved 03-oppm-matrix.png')
 
-  // Screenshot 4: Edit plan panel (workflow)
-  await page.click('button:has-text("Edit plan")')
+  // Screenshot 4: Edit plan panel (workflow) — Edit is an icon button with aria-label
+  await page.click('button[aria-label="Edit plan"]')
   await page.waitForSelector('.edit-panel', { timeout: 3000 })
   await page.screenshot({ path: join(outDir, '04-edit-plan.png'), fullPage: false })
   console.log('Saved 04-edit-plan.png')
