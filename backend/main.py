@@ -21,8 +21,15 @@ app = FastAPI(title="Project Management API", version="0.1.0")
 _BACKEND_DIR = Path(__file__).resolve().parent
 PLAN_JSON_PATH = Path(os.environ.get("PLAN_JSON_PATH", _BACKEND_DIR / "data" / "plan.json"))
 PLANS_DIR = Path(os.environ.get("PLANS_DIR", _BACKEND_DIR / "data" / "plans"))
-PLAN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
-PLANS_DIR.mkdir(parents=True, exist_ok=True)
+
+try:
+    PLAN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PLANS_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    PLAN_JSON_PATH = Path(os.environ.get("PLAN_JSON_PATH", "/tmp/data/plan.json"))
+    PLANS_DIR = Path(os.environ.get("PLANS_DIR", "/tmp/data/plans"))
+    PLAN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PLANS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_TODOS = int(os.environ.get("MAX_TODOS", "200"))
 MAX_REQUEST_BODY = int(os.environ.get("MAX_REQUEST_BODY", str(1_000_000)))  # 1 MB
