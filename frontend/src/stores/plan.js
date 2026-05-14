@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store'
 
-const API = 'http://localhost:8000'
+const API = '/_/backend'
 
 /** Default plan when API is unavailable or file is missing (must match backend shape). */
 export const defaultPlan = {
