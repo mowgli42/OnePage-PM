@@ -8,28 +8,63 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
 
 app = FastAPI(title="Project Management API", version="0.1.0")
 
-# Plan persistence: single file (legacy) or plans directory for multiple plans
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 _BACKEND_DIR = Path(__file__).resolve().parent
 PLAN_JSON_PATH = Path(os.environ.get("PLAN_JSON_PATH", _BACKEND_DIR / "data" / "plan.json"))
 PLANS_DIR = Path(os.environ.get("PLANS_DIR", _BACKEND_DIR / "data" / "plans"))
 PLAN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
 PLANS_DIR.mkdir(parents=True, exist_ok=True)
 
+MAX_TODOS = int(os.environ.get("MAX_TODOS", "200"))
+MAX_REQUEST_BODY = int(os.environ.get("MAX_REQUEST_BODY", str(1_000_000)))  # 1 MB
+
+# CORS: env-configurable for deployment flexibility; defaults to local dev origins
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173"
+ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-# In-memory store with sample mock data
+
+# ---------------------------------------------------------------------------
+# Security middleware
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.middleware("http")
+async def limit_request_body(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_REQUEST_BODY:
+        return JSONResponse(status_code=413, content={"detail": "Request body too large"})
+    return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# In-memory todo store with sample mock data
+# ---------------------------------------------------------------------------
 TODOS = [
     {
         "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -51,11 +86,13 @@ TODOS = [
     },
 ]
 
-# Default OPPM plan (same shape as frontend)
-# projectId: unique UUID for sharing/import; projectNumber: optional human-readable id (e.g. 1001)
+
+# ---------------------------------------------------------------------------
+# Default OPPM plan
+# ---------------------------------------------------------------------------
 DEFAULT_PLAN = {
-    "projectId": None,  # Set on first save if missing
-    "projectNumber": None,  # Optional display number (integer)
+    "projectId": None,
+    "projectNumber": None,
     "header": {
         "projectTitle": "Regional Data Collection Pilot",
         "sponsor": "NASS Field Operations",
@@ -115,6 +152,9 @@ DEFAULT_PLAN = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Plan persistence helpers
+# ---------------------------------------------------------------------------
 def _plan_path(plan_id: str) -> Path:
     """Path to a plan JSON file in PLANS_DIR. Id is sanitized to filename-safe stem."""
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in plan_id).strip() or "default"
@@ -185,7 +225,6 @@ def _list_plans() -> list[dict]:
             "projectNumber": data.get("projectNumber"),
         })
     if not out:
-        # Seed default plan
         _save_plan({**DEFAULT_PLAN}, "default")
         out.append({
             "id": "default",
@@ -196,6 +235,9 @@ def _list_plans() -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Pydantic models — Todos
+# ---------------------------------------------------------------------------
 class TodoCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     completed: bool = False
@@ -213,11 +255,117 @@ class TodoResponse(BaseModel):
     created_at: str
 
 
+# ---------------------------------------------------------------------------
+# Pydantic models — Plan input validation
+# ---------------------------------------------------------------------------
+class PlanHeaderInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    projectTitle: str = Field("", max_length=300)
+    sponsor: str = Field("", max_length=300)
+    projectManager: str = Field("", max_length=300)
+    startDate: str = Field("", max_length=100)
+    endDate: str = Field("", max_length=100)
+    reportingPeriod: str = Field("", max_length=100)
+    version: str = Field("", max_length=50)
+    dateUpdated: str = Field("", max_length=100)
+
+
+class MatrixCellInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    symbol: str = Field("", max_length=10)
+    label: str = Field("", max_length=200)
+
+
+class ObjectiveInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    id: str = Field(max_length=50)
+    title: str = Field(max_length=500)
+    metric: str = Field("", max_length=300)
+    owner: str = Field("", max_length=50)
+
+
+class OwnerInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    initials: str = Field(max_length=20)
+    role: str = Field("", max_length=200)
+
+
+class BudgetCategoryInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    name: str = Field(max_length=200)
+    planned: float = Field(0, ge=0, le=1e12)
+    spent: float = Field(0, ge=0, le=1e12)
+
+
+class BudgetInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    total: float = Field(0, ge=0, le=1e12)
+    spent: float = Field(0, ge=0, le=1e12)
+    categories: list[BudgetCategoryInput] = Field(default_factory=list, max_length=30)
+
+
+class RiskInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    text: str = Field(max_length=500)
+    owner: str = Field("", max_length=100)
+    mitigation: str = Field("", max_length=500)
+
+
+class KPIInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    label: str = Field(max_length=300)
+    value: str = Field("", max_length=200)
+    target: bool = False
+
+
+class StatusInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    level: str = Field("green", max_length=20)
+    text: str = Field("", max_length=1000)
+
+
+class PlanInput(BaseModel):
+    model_config = {"extra": "ignore"}
+    projectId: str | None = Field(None, max_length=100)
+    projectNumber: int | None = Field(None, ge=0, le=999999)
+    header: PlanHeaderInput = Field(default_factory=PlanHeaderInput)
+    quarters: list[str] = Field(default_factory=list, max_length=24)
+    objectives: list[ObjectiveInput] = Field(default_factory=list, max_length=50)
+    matrix: list[list[MatrixCellInput]] = Field(default_factory=list, max_length=50)
+    owners: list[OwnerInput] = Field(default_factory=list, max_length=50)
+    budget: BudgetInput = Field(default_factory=BudgetInput)
+    risks: list[RiskInput] = Field(default_factory=list, max_length=30)
+    kpis: list[KPIInput] = Field(default_factory=list, max_length=30)
+    status: StatusInput = Field(default_factory=StatusInput)
+
+    @field_validator("quarters")
+    @classmethod
+    def validate_quarter_labels(cls, v):
+        for q in v:
+            if len(q) > 100:
+                raise ValueError("Time period label too long (max 100 characters)")
+        return v
+
+    @field_validator("matrix")
+    @classmethod
+    def validate_matrix_rows(cls, v):
+        for row in v:
+            if len(row) > 24:
+                raise ValueError("Matrix row too wide (max 24 columns)")
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Routes — Health
+# ---------------------------------------------------------------------------
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
+# ---------------------------------------------------------------------------
+# Routes — Todos
+# ---------------------------------------------------------------------------
 @app.get("/todos", response_model=list[TodoResponse])
 def list_todos():
     return TODOS
@@ -233,6 +381,8 @@ def get_todo(todo_id: str):
 
 @app.post("/todos", response_model=TodoResponse, status_code=201)
 def create_todo(body: TodoCreate):
+    if len(TODOS) >= MAX_TODOS:
+        raise HTTPException(status_code=429, detail=f"Todo limit reached ({MAX_TODOS})")
     todo = {
         "id": str(uuid4()),
         "title": body.title,
@@ -264,8 +414,9 @@ def delete_todo(todo_id: str):
     raise HTTPException(status_code=404, detail="Todo not found")
 
 
-# --- Plan (OPPM) persistence ---
-
+# ---------------------------------------------------------------------------
+# Routes — Plan (OPPM) persistence
+# ---------------------------------------------------------------------------
 @app.get("/plans")
 def list_plans():
     """List available plans (id and title). From PLANS_DIR; includes legacy single file if no dir entries."""
@@ -279,19 +430,16 @@ def get_plan(plan_id: str | None = None):
 
 
 @app.put("/plan")
-def put_plan(plan: dict, plan_id: str | None = None):
+def put_plan(plan: PlanInput, plan_id: str | None = None):
     """Save the full project plan. Optional query: plan_id (when using multiple plans).
     Ensures projectId (UUID) and optional projectNumber are set for sharing/identifying projects."""
-    if not isinstance(plan, dict):
-        raise HTTPException(status_code=422, detail="Body must be a JSON object")
-    merged = {**DEFAULT_PLAN, **plan}
+    plan_data = plan.model_dump(exclude_unset=True)
+    merged = {**DEFAULT_PLAN, **plan_data}
     for key in DEFAULT_PLAN:
         if key not in merged or merged[key] is None:
             merged[key] = DEFAULT_PLAN[key]
-    # Unique project identifier: UUID so projects are globally identifiable when shared
     if not merged.get("projectId"):
         merged["projectId"] = str(uuid4())
-    # Optional human-readable project number (e.g. 1001, 1002) for display/reference; only assign if missing
     if merged.get("projectNumber") is None:
         merged["projectNumber"] = _next_project_number()
     _save_plan(merged, plan_id)
