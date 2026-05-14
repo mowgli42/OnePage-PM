@@ -11,7 +11,7 @@ Full-stack project management app: Svelte 4 + Vite frontend (port 5173) and Fast
 - **Backend:** `cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000`
 - **Frontend:** `cd frontend && npm run dev`
 - Both must be running for E2E tests and manual testing.
-- The Vite dev server proxies `/api/*` requests to the backend at `localhost:8000`, so the frontend uses relative `/api` paths in both dev and production (Vercel).
+- The Vite dev server proxies `/_/backend/*` requests to the backend at `localhost:8000`, so the frontend uses relative `/_/backend` paths in both dev and production (Vercel).
 
 ### Testing
 
