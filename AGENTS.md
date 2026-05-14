@@ -25,10 +25,9 @@ Full-stack project management app: Svelte 4 + Vite frontend (port 5173) and Fast
 
 ### Vercel deployment
 
-- `vercel.json` at repo root configures build (frontend), rewrites (`/api/*` → serverless function), and security headers.
-- `api/index.py` is the serverless entry point — mounts the FastAPI backend app at `/api`.
-- Root `requirements.txt` lists Python deps for Vercel's runtime (just `fastapi`; uvicorn not needed in serverless).
-- On Vercel, data in `/tmp` is ephemeral — todos reset on cold start, plans may be lost between deployments.
+- `vercel.json` uses `experimentalServices` with two services: `frontend` (Vite at `/`) and `backend` (FastAPI at `/_/backend`).
+- The frontend stores call `/_/backend/*` for all API requests. In dev, Vite proxies `/_/backend/*` to `localhost:8000` (stripping the prefix). On Vercel, the route prefix handles this automatically.
+- Security headers are configured in `vercel.json` for all routes.
 
 ### Gotchas
 
