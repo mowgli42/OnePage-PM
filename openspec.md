@@ -10,7 +10,7 @@
 ```
 ┌─────────────────────┐     JSON over HTTP      ┌─────────────────────┐
 │  Svelte Frontend    │ ◄─────────────────────► │  FastAPI Backend    │
-│  - Minimal stores   │  GET/PUT /plan,         │  - In-memory store  │
+│  - Minimal stores   │  GET/PUT /plan,         │  - JSON file store  │
 │  - One-page OPPM    │  GET/POST /todos        │  - Port 8000        │
 └─────────────────────┘                         └─────────────────────┘
         Port 5173 (Vite)                                  │
@@ -23,7 +23,7 @@
 
 - **Frontend**: Svelte + Vite, runs on `http://localhost:5173`
 - **Backend**: FastAPI, runs on `http://localhost:8000`
-- **Data**: JSON only. No database—in-memory + optional JSON file for mock data.
+- **Data**: JSON only. No database—todos and plans persist as JSON files under `backend/data/` (configurable via env).
 
 ---
 
@@ -38,6 +38,8 @@
 | POST | `/todos` | Create todo (body: `{ title, completed? }`) |
 | PATCH | `/todos/{id}` | Update todo (body: partial) |
 | DELETE | `/todos/{id}` | Delete todo |
+
+Storage: single file via `TODOS_JSON_PATH` (default `backend/data/todos.json`). Atomic writes with rotating backups (`todos.json.bak.1`, …). On first run with no file, seeds from built-in defaults (same as former in-memory mock data).
 
 ### Health
 
@@ -144,3 +146,4 @@ Design system (v2.0): typography (display + body pair), color palette (base, sur
 | 2026-02-22 | Display items (UI): section 4 listing app shell, Todos view, OPPM view; design system v2.0 reference |
 | 2026-02-22 | Frontend 2.0 facelift: design system (Fraunces + Source Sans 3, slate/cream/amber), app shell tabs, TodoForm/TodoList/OPPM styling, a11y (focus, aria) |
 | 2026-02-22 | Plan: projectId (UUID) and projectNumber; GET /plans returns both; PUT ensures projectId/projectNumber for sharing; README workflow and mock data (4 projects) |
+| 2026-05-20 | Todos: persistent JSON file (`TODOS_JSON_PATH`), atomic save, backups, first-run migration from defaults |

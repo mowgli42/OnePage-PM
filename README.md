@@ -154,7 +154,7 @@ flowchart LR
 | Step | Action |
 |------|--------|
 | 1 | Open http://localhost:5173 (or ?view=oppm for OPPM directly). |
-| 2 | **Todos:** Add/toggle/delete tasks (in-memory; resets on backend restart). |
+| 2 | **Todos:** Add/toggle/delete tasks (persisted to `backend/data/todos.json`; survives restart). |
 | 3 | **OPPM:** View one-page plan (header, objectives × timeline matrix, budget, risks, status). |
 | 4 | Click **Edit plan** to open the edit panel (header, time periods, objectives, matrix, budget, status). |
 | 5 | Change fields (e.g. project title, add/remove periods or objectives, set matrix symbols/labels). |
@@ -266,11 +266,17 @@ See `openspec.md` for full contracts and examples.
 
 ## Mock Data
 
-The backend starts with 3 sample todos (in-memory; resets on restart):
+The backend seeds 3 sample todos on first run (persisted to `backend/data/todos.json`):
 
 - "Ship the app" (pending)
 - "Write OpenSpec" (done)
 - "Set up Beads tracker" (done)
+
+Reset or re-seed todos:
+
+```bash
+python3 backend/scripts/seed_todos.py
+```
 
 **OPPM projects:** Use the seed script to create 4 mock projects with unique identifiers:
 
@@ -295,7 +301,7 @@ The app uses **file-based storage** with a **project identifier** so you can hos
 
 ### How it works
 
-- **Storage:** Each project is a JSON file in `backend/data/plans/` (or `PLANS_DIR`). Filename = plan id (e.g. `regional-pilot.json`).
+- **Storage:** Todos in `backend/data/todos.json` (or `TODOS_JSON_PATH`). Each project plan is a JSON file in `backend/data/plans/` (or `PLANS_DIR`). Filename = plan id (e.g. `regional-pilot.json`).
 - **Project identifier:** Every plan has:
   - **projectId** – UUID set by the server on first save; uniquely identifies the project when sharing or importing.
   - **projectNumber** – Optional integer (e.g. 1001, 1002) for display; server assigns the next available number if missing.
@@ -321,7 +327,7 @@ The app uses **file-based storage** with a **project identifier** so you can hos
 
 | Goal | Approach |
 |------|----------|
-| Run locally | Backend + frontend; data in `backend/data/plans/`. |
+| Run locally | Backend + frontend; data in `backend/data/` (`todos.json` + `plans/`). |
 | Share across team | Deploy backend with shared volume; everyone uses same URL. |
 | Share without central host | Export project JSON; others import the file into their `PLANS_DIR`. |
 | Uniquely identify a project | Use **projectId** (UUID) in the JSON; **projectNumber** for human reference. |
