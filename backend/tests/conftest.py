@@ -12,8 +12,13 @@ import pytest
 _TEST_PLAN_DIR = Path(tempfile.mkdtemp(prefix="oppm_test_"))
 _TEST_PLAN_PATH = _TEST_PLAN_DIR / "plan.json"
 _TEST_TODOS_PATH = _TEST_PLAN_DIR / "todos.json"
+os.environ["DATA_DIR"] = str(_TEST_PLAN_DIR)
 os.environ["PLAN_JSON_PATH"] = str(_TEST_PLAN_PATH)
+os.environ["PLANS_DIR"] = str(_TEST_PLAN_DIR / "plans")
 os.environ["TODOS_JSON_PATH"] = str(_TEST_TODOS_PATH)
+os.environ["AUDIT_JSONL_PATH"] = str(_TEST_PLAN_DIR / "audit.jsonl")
+os.environ["USERS_JSON_PATH"] = str(_TEST_PLAN_DIR / "users.json")
+os.environ["AUTH_ENABLED"] = "false"
 
 
 @pytest.fixture
@@ -24,10 +29,16 @@ def plan_file():
 
 @pytest.fixture(autouse=True)
 def reset_plan_file(plan_file):
-    """Remove plan file before each test so GET /plan returns default unless we PUT."""
+    """Remove plan files before each test so GET /plan returns default unless we PUT."""
+    plans_dir = _TEST_PLAN_DIR / "plans"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    for p in plans_dir.glob("*.json"):
+        p.unlink()
     if plan_file.exists():
         plan_file.unlink()
     yield
+    for p in plans_dir.glob("*.json"):
+        p.unlink(missing_ok=True)
     if plan_file.exists():
         plan_file.unlink(missing_ok=True)
 

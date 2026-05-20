@@ -1,11 +1,11 @@
 import { get, writable } from 'svelte/store'
-
-const API = '/_/backend'
+import { apiFetch } from '../lib/api.js'
 
 /** Default plan when API is unavailable or file is missing (must match backend shape). */
 export const defaultPlan = {
   projectId: null,
   projectNumber: null,
+  archived: false,
   header: { projectTitle: 'Regional Data Collection Pilot', sponsor: 'NASS Field Operations', projectManager: 'Jane Smith', startDate: 'Jan 1, 2026', endDate: 'Dec 31, 2026', reportingPeriod: 'FY Q2 2026', version: 'v1.0', dateUpdated: 'Feb 19, 2026' },
   quarters: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
   objectives: [
@@ -44,6 +44,8 @@ export const defaultPlan = {
     { label: 'Deliverables on time', value: '4 / 5', target: true },
   ],
   status: { level: 'yellow', text: 'Region 3 data collection delayed 2 weeks; mitigation in progress.' },
+  tasks: [],
+  comments: [],
 }
 
 export const plan = writable(null)
@@ -51,15 +53,24 @@ export const planLoading = writable(false)
 export const planSaving = writable(false)
 export const planError = writable(null)
 export const oppmEditing = writable(false)
-/** List of { id, title } from GET /plans */
 export const plansList = writable([])
-/** Currently selected plan id (for multi-plan). */
 export const currentPlanId = writable(null)
+export const planSearch = writable('')
 
-export async function fetchPlans() {
+function syncPlanUrl(planId, view = 'oppm') {
+  if (typeof window === 'undefined') return
+  const url = new URL(window.location.href)
+  url.searchParams.set('view', view)
+  if (planId) url.searchParams.set('plan_id', planId)
+  else url.searchParams.delete('plan_id')
+  window.history.replaceState({}, '', url.pathname + '?' + url.searchParams.toString())
+}
+
+export async function fetchPlans(search = '') {
   try {
-    const res = await fetch(`${API}/plans`)
-    if (!res.ok) return
+    const q = search ? `?search=${encodeURIComponent(search)}` : ''
+    const res = await apiFetch(`/plans${q}`)
+    if (!res.ok) return []
     const list = await res.json()
     plansList.set(Array.isArray(list) ? list : [])
     if (list?.length && !get(currentPlanId)) currentPlanId.set(list[0].id)
@@ -75,11 +86,14 @@ export async function fetchPlan(planId = null) {
   planError.set(null)
   const id = planId ?? get(currentPlanId)
   try {
-    const url = id ? `${API}/plan?plan_id=${encodeURIComponent(id)}` : `${API}/plan`
-    const res = await fetch(url)
+    const url = id ? `/plan?plan_id=${encodeURIComponent(id)}` : '/plan'
+    const res = await apiFetch(url)
     const data = res.ok ? await res.json() : null
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    if (id) currentPlanId.set(id)
+    if (id) {
+      currentPlanId.set(id)
+      syncPlanUrl(id)
+    }
     plan.set(data)
     return data
   } catch (e) {
@@ -96,15 +110,15 @@ export async function savePlan(planData, planId = null) {
   planError.set(null)
   const id = planId ?? get(currentPlanId)
   try {
-    const url = id ? `${API}/plan?plan_id=${encodeURIComponent(id)}` : `${API}/plan`
-    const res = await fetch(url, {
+    const url = id ? `/plan?plan_id=${encodeURIComponent(id)}` : '/plan'
+    const res = await apiFetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(planData),
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     plan.set(data)
+    await fetchPlans(get(planSearch))
     return data
   } catch (e) {
     planError.set(e.message)
@@ -112,4 +126,49 @@ export async function savePlan(planData, planId = null) {
   } finally {
     planSaving.set(false)
   }
+}
+
+export async function createPlan(title, id = null) {
+  const res = await apiFetch('/plan', {
+    method: 'POST',
+    body: JSON.stringify({ title, id }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  currentPlanId.set(data.id)
+  syncPlanUrl(data.id)
+  await fetchPlans()
+  await fetchPlan(data.id)
+  return data
+}
+
+export async function deletePlan(planId) {
+  const res = await apiFetch(`/plan?plan_id=${encodeURIComponent(planId)}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  await fetchPlans()
+  const list = get(plansList)
+  if (list.length) {
+    currentPlanId.set(list[0].id)
+    await fetchPlan(list[0].id)
+  } else {
+    currentPlanId.set(null)
+    plan.set(null)
+  }
+}
+
+export async function duplicatePlan(planId) {
+  const res = await apiFetch(`/plan/duplicate?plan_id=${encodeURIComponent(planId)}`, { method: 'POST' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  await fetchPlans()
+  currentPlanId.set(data.id)
+  syncPlanUrl(data.id)
+  await fetchPlan(data.id)
+  return data
+}
+
+export function initPlanFromUrl() {
+  if (typeof window === 'undefined') return null
+  const params = new URLSearchParams(window.location.search)
+  return params.get('plan_id')
 }

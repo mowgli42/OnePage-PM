@@ -7,7 +7,5 @@ __pycache__/
 .DS_Store
 
 # Runtime JSON persistence (see TODOS_JSON_PATH, PLANS_DIR)
-backend/data/todos.json
-backend/data/todos.json.bak.*
-backend/data/plan.json
-backend/data/plans/
+backend/data/
+!backend/data/.gitkeep

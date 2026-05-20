@@ -246,6 +246,38 @@ For an AI coding agent:
 
 ---
 
+## Docker (self-hosted)
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+- Frontend: http://localhost:5173 (proxies `/_/backend` to the API)
+- Backend: http://localhost:8000
+- Data volume: `pm-data` mounted at `/data` in the backend container
+
+Backup: `./scripts/backup.sh` (archives `backend/data` or `DATA_DIR`).
+
+## Authentication (optional)
+
+Set `AUTH_ENABLED=true` and default users in `backend/data/users.json` (seeded on first run). Login via the UI or `POST /auth/login` with `{ "username", "password" }`. Admin can write; guest is read-only when `AUTH_ALLOW_GUEST_READ=true`.
+
+Default credentials (change in production): `admin` / `admin`, `guest` / `guest`.
+
+## Features (roadmap)
+
+| Area | Highlights |
+|------|------------|
+| **Persistence** | Todos + plans as JSON; atomic writes; rotating backups |
+| **Auth** | Bearer tokens, audit log, login throttling |
+| **Plans** | Create, duplicate, delete, archive, search, import/export JSON |
+| **Gantt** | Timeline tasks on plans with dependency warnings |
+| **Todos** | List + Kanban views |
+| **UX** | Dark mode, `?plan_id=` deep links, plan toolbar |
+
+---
+
 ## API Overview
 
 | Method | Path | Description |
