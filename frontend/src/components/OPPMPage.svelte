@@ -1,6 +1,9 @@
 <script>
   import { onMount } from 'svelte'
   import { plan, planLoading, planSaving, planError, fetchPlan, savePlan, fetchPlans, defaultPlan, oppmEditing } from '../stores/plan.js'
+  import { canWrite } from '../stores/auth.js'
+  import PlanToolbar from './PlanToolbar.svelte'
+  import GanttView from './GanttView.svelte'
 
   let planData = null
   $: editing = $oppmEditing
@@ -91,6 +94,23 @@
     planData.budget.categories = planData.budget.categories.filter((_, idx) => idx !== i)
   }
 
+  function addTask() {
+    if (!planData) return
+    planData.tasks = [...(planData.tasks || []), {
+      id: `T${(planData.tasks?.length || 0) + 1}`,
+      title: '',
+      startDate: planData.header?.startDate || '',
+      endDate: planData.header?.endDate || '',
+      dependsOn: [],
+      progress: 0,
+    }]
+  }
+
+  function removeTask(i) {
+    if (!planData?.tasks) return
+    planData.tasks = planData.tasks.filter((_, idx) => idx !== i)
+  }
+
   const SYMBOLS = [
     { value: '', label: '—' },
     { value: '○', label: '○ Planned' },
@@ -127,6 +147,7 @@
 </script>
 
 <div class="oppm">
+  <PlanToolbar />
   {#if $planError}
     <p class="plan-error no-print" role="alert">Could not load or save plan: {$planError}. Start the backend to persist changes.</p>
   {/if}
@@ -227,6 +248,20 @@
       </div>
 
       <div class="edit-section schedule-edit">
+        <h4>Timeline tasks (Gantt)</h4>
+        {#each planData.tasks || [] as task, ti}
+          <div class="edit-row">
+            <input type="text" bind:value={task.id} placeholder="T1" class="id-input" />
+            <input type="text" bind:value={task.title} placeholder="Title" class="title-input" />
+            <input type="text" bind:value={task.startDate} placeholder="Start" />
+            <input type="text" bind:value={task.endDate} placeholder="End" />
+            <button type="button" class="btn-sm" on:click={() => removeTask(ti)}>−</button>
+          </div>
+        {/each}
+        <button type="button" class="btn-add" on:click={addTask}>+ Add task</button>
+      </div>
+
+      <div class="edit-section schedule-edit">
         <h4>Schedule – Matrix (milestones per objective × period)</h4>
         <p class="edit-hint">○ Planned, ● Done, △ Risk. Set symbol and short label per cell.</p>
         <div class="matrix-edit-wrap">
@@ -283,6 +318,8 @@
       <span class="field">{planData.header?.version ?? ''} / {planData.header?.dateUpdated ?? ''}</span>
     </div>
   </header>
+
+  <GanttView tasks={planData.tasks || []} />
 
   <!-- 2–4. Objectives + Timeline + Matrix (schedule – key data) -->
   <div class="oppm-matrix-wrap key-data schedule-block">

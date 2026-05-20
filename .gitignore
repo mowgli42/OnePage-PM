@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+# Runtime JSON persistence (see TODOS_JSON_PATH, PLANS_DIR)
+backend/data/
+!backend/data/.gitkeep

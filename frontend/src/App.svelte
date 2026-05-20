@@ -1,10 +1,14 @@
 <script>
   import { onMount } from 'svelte'
   import { todos, loading, error, fetchTodos, createTodo, toggleTodo, deleteTodo } from './stores/todos.js'
-  import { oppmEditing, plansList, currentPlanId, fetchPlans, fetchPlan } from './stores/plan.js'
+  import { oppmEditing, plansList, currentPlanId, fetchPlans, fetchPlan, initPlanFromUrl } from './stores/plan.js'
+  import { fetchAuthMe } from './stores/auth.js'
+  import { canWrite } from './stores/auth.js'
   import TodoList from './components/TodoList.svelte'
   import TodoForm from './components/TodoForm.svelte'
   import OPPMPage from './components/OPPMPage.svelte'
+  import LoginPanel from './components/LoginPanel.svelte'
+  import KanbanBoard from './components/KanbanBoard.svelte'
 
   function getViewFromUrl() {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
@@ -13,6 +17,8 @@
   }
 
   let view = getViewFromUrl()
+  let todoLayout = 'list'
+  let darkMode = false
 
   function setView(v) {
     view = v
@@ -21,10 +27,26 @@
       url.searchParams.set('view', v)
       window.history.replaceState({}, '', url.pathname + '?' + url.searchParams.toString())
     }
+    if (v === 'oppm') fetchPlans().then(() => fetchPlan($currentPlanId))
+  }
+
+  function toggleDark() {
+    darkMode = !darkMode
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+      localStorage.setItem('pm_theme', darkMode ? 'dark' : 'light')
+    }
   }
 
   onMount(() => {
+    const saved = localStorage.getItem('pm_theme')
+    darkMode = saved === 'dark'
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+    fetchAuthMe()
     fetchTodos()
+    const planId = initPlanFromUrl()
+    if (planId) currentPlanId.set(planId)
+    if (view === 'oppm') fetchPlans().then(() => fetchPlan(planId || $currentPlanId))
     const onPopState = () => { view = getViewFromUrl() }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
@@ -59,6 +81,10 @@
       <button class="tab" class:active={view === 'todos'} on:click={() => setView('todos')} role="tab" aria-selected={view === 'todos'}>Todos</button>
       <button class="tab" class:active={view === 'oppm'} on:click={() => setView('oppm')} role="tab" aria-selected={view === 'oppm'}>OPPM</button>
     </div>
+    <LoginPanel />
+    <button type="button" class="header-icon theme-toggle" on:click={toggleDark} aria-label="Toggle dark mode" title="Toggle theme">
+      {darkMode ? '☀' : '☾'}
+    </button>
     {#if view === 'oppm'}
       <button type="button" class="header-icon" on:click={() => window.print()} aria-label="Print one page" title="Print one page">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
@@ -76,15 +102,24 @@
       {#if $error}
         <div class="error" role="alert">Backend offline: {$error}. Start with <code>uvicorn main:app --reload</code> in backend/</div>
       {/if}
-      <TodoForm onSubmit={(title) => createTodo(title)} />
-      <TodoList {todos} onToggle={toggleTodo} onDelete={deleteTodo} loading={$loading} />
+      <div class="todo-layout-tabs no-print">
+        <button type="button" class:active={todoLayout === 'list'} on:click={() => (todoLayout = 'list')}>List</button>
+        <button type="button" class:active={todoLayout === 'kanban'} on:click={() => (todoLayout = 'kanban')}>Kanban</button>
+      </div>
+      {#if canWrite()}
+        <TodoForm onSubmit={(title) => createTodo(title)} />
+      {/if}
+      {#if todoLayout === 'kanban'}
+        <KanbanBoard {todos} onToggle={toggleTodo} onDelete={deleteTodo} loading={$loading} />
+      {:else}
+        <TodoList {todos} onToggle={toggleTodo} onDelete={deleteTodo} loading={$loading} />
+      {/if}
     {/if}
   </section>
 </main>
 
 <style>
   :global(html) {
-    /* Brand palette — IxDF-inspired (coral + teal, dark text on light) */
     --font-display: 'Fraunces', Georgia, serif;
     --font-body: 'Source Sans 3', system-ui, sans-serif;
     --color-base: #1f2937;
@@ -104,7 +139,6 @@
     --color-error-text: #991b1b;
     --color-success: #059669;
     --color-warn: #d97706;
-    /* Completion states (brand-aligned): done = teal, risk = coral, planned = neutral */
     --color-done: var(--color-secondary);
     --color-risk: var(--color-accent);
     --color-planned: var(--color-base-muted);
@@ -115,6 +149,38 @@
     --shadow-md: 0 2px 8px rgba(31, 41, 55, 0.08);
     --transition: 0.2s ease;
   }
+  :global(html[data-theme='dark']) {
+    --color-base: #f3f4f6;
+    --color-base-muted: #9ca3af;
+    --color-surface: #111827;
+    --color-surface-elevated: #1f2937;
+    --color-border: #374151;
+    --color-border-strong: #6b7280;
+    --color-accent-muted: #451a1a;
+    --color-secondary-muted: #134e4a;
+    --color-error-bg: #450a0a;
+    --color-error-border: #7f1d1d;
+    --color-error-text: #fecaca;
+  }
+  .todo-layout-tabs {
+    display: inline-flex;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+  .todo-layout-tabs button {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface-elevated);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .todo-layout-tabs button.active {
+    background: var(--color-accent-muted);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .theme-toggle { font-size: 1.1rem; }
 
   .app {
     max-width: 1200px;
