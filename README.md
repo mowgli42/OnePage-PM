@@ -276,13 +276,40 @@ Default credentials (change in production): `admin` / `admin`, `guest` / `guest`
 | **Todos** | List + Kanban views |
 | **UX** | Dark mode, `?plan_id=` deep links, plan toolbar |
 
+### Follow-up features
+
+| Feature | Usage |
+|---------|--------|
+| **SQLite** | `STORAGE_BACKEND=sqlite` — auto-imports existing JSON on first run |
+| **Notifications** | `NOTIFY_ON_CHANGES=true` + `NTFY_TOPIC` or `SMTP_*` |
+| **Attachments** | Plan toolbar **Attach file**; `GET/POST /attachments` |
+| **Templates** | `GET /templates`; **Use template** in OPPM toolbar |
+| **iCal / Print** | Toolbar links — HTML export for browser Print-to-PDF |
+| **Activity** | Panel on OPPM view (`GET /activity`) |
+
+SvelteKit migration guide: [docs/SvelteKit-Migration.md](docs/SvelteKit-Migration.md) (deferred; app uses `frontend/src/lib/router.js`).
+
 ---
 
 ## API Overview
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
+| GET | `/health` | Health + storage stats |
+| POST | `/auth/login` | Login (when auth enabled) |
+| GET | `/auth/me` | Current session |
+| GET | `/activity` | Audit log entries |
+| POST | `/plan` | Create new plan |
+| DELETE | `/plan` | Delete plan (`?plan_id=`) |
+| POST | `/plan/duplicate` | Duplicate plan |
+| PATCH | `/plan` | Update title/archive meta |
+| POST | `/todos/{id}/comments` | Add todo comment |
+| POST | `/plan/comments` | Add plan comment (`?plan_id=`) |
+| GET | `/templates` | List plan templates |
+| POST | `/plan/from-template` | Create plan from template (`?template_id=`) |
+| GET | `/plan/export/ical` | Download `.ics` calendar |
+| GET | `/plan/export/html` | Printable HTML (save as PDF) |
+| GET/POST/DELETE | `/attachments` | File attachments for plans/todos |
 | GET | `/plans` | List projects (id, title, projectId, projectNumber) |
 | GET | `/plan` | Get one plan. Query `plan_id` for multi-project. |
 | PUT | `/plan` | Save plan. Query `plan_id` optional. Body: full plan JSON. |

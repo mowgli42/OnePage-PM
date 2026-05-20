@@ -1,0 +1,31 @@
+{
+  "header": {
+    "projectTitle": "Product Launch – Q2",
+    "sponsor": "Product Marketing",
+    "projectManager": "Alex Kim",
+    "startDate": "Apr 1, 2026",
+    "endDate": "Jun 30, 2026",
+    "reportingPeriod": "Q2 2026",
+    "version": "v0.1",
+    "dateUpdated": "May 20, 2026"
+  },
+  "quarters": ["Q2 2026", "Q3 2026"],
+  "objectives": [
+    {"id": "O1", "title": "Beta release", "metric": "Shipped", "owner": "AK"},
+    {"id": "O2", "title": "Launch campaign", "metric": "Live", "owner": "PM"}
+  ],
+  "matrix": [
+    [{"symbol": "●", "label": "Beta"}, {"symbol": "○", "label": "GA"}],
+    [{"symbol": "○", "label": "Creative"}, {"symbol": "○", "label": "Launch"}]
+  ],
+  "owners": [{"initials": "AK", "role": "PM"}, {"initials": "PM", "role": "Marketing"}],
+  "budget": {"total": 50000, "spent": 0, "categories": [{"name": "Marketing", "planned": 50000, "spent": 0}]},
+  "risks": [],
+  "kpis": [],
+  "status": {"level": "green", "text": "Template: product launch."},
+  "tasks": [
+    {"id": "T1", "title": "Beta ship", "startDate": "2026-04-01", "endDate": "2026-05-01", "dependsOn": [], "progress": 0},
+    {"id": "T2", "title": "Launch", "startDate": "2026-05-15", "endDate": "2026-06-30", "dependsOn": ["T1"], "progress": 0}
+  ],
+  "comments": []
+}

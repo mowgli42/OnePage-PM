@@ -19,6 +19,8 @@ os.environ["TODOS_JSON_PATH"] = str(_TEST_TODOS_PATH)
 os.environ["AUDIT_JSONL_PATH"] = str(_TEST_PLAN_DIR / "audit.jsonl")
 os.environ["USERS_JSON_PATH"] = str(_TEST_PLAN_DIR / "users.json")
 os.environ["AUTH_ENABLED"] = "false"
+os.environ["STORAGE_BACKEND"] = "json"
+os.environ["NOTIFY_ON_CHANGES"] = "false"
 
 
 @pytest.fixture

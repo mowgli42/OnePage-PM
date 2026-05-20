@@ -4,7 +4,7 @@
 
 ### Overview
 
-Full-stack project management app: Svelte 4 + Vite frontend (port 5173) and FastAPI backend (port 8000). No database — todos and OPPM plans persist as JSON files under `backend/data/` (see `TODOS_JSON_PATH`, `PLANS_DIR`, `DATA_DIR` in README). Optional auth (`AUTH_ENABLED`), Docker Compose, and CI in `.github/workflows/ci.yml`. See `README.md` for complete setup and API docs.
+Full-stack project management app: Svelte 4 + Vite frontend (port 5173) and FastAPI backend (port 8000). No database — todos and OPPM plans persist as JSON files under `backend/data/` (see `TODOS_JSON_PATH`, `PLANS_DIR`, `DATA_DIR` in README). Optional auth (`AUTH_ENABLED`), SQLite (`STORAGE_BACKEND=sqlite`), attachments, templates, exports (iCal/HTML), notifications (ntfy/SMTP), Docker Compose, and CI. See `README.md` for complete setup and API docs.
 
 ### Running services
 

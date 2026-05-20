@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte'
   import { todos, loading, error, fetchTodos, createTodo, toggleTodo, deleteTodo } from './stores/todos.js'
-  import { oppmEditing, plansList, currentPlanId, fetchPlans, fetchPlan, initPlanFromUrl } from './stores/plan.js'
+  import { oppmEditing, plansList, currentPlanId, fetchPlans, fetchPlan } from './stores/plan.js'
+  import { readRoute, writeRoute, onRouteChange } from './lib/router.js'
   import { fetchAuthMe } from './stores/auth.js'
   import { canWrite } from './stores/auth.js'
   import TodoList from './components/TodoList.svelte'
@@ -9,24 +10,15 @@
   import OPPMPage from './components/OPPMPage.svelte'
   import LoginPanel from './components/LoginPanel.svelte'
   import KanbanBoard from './components/KanbanBoard.svelte'
+  import ActivityFeed from './components/ActivityFeed.svelte'
 
-  function getViewFromUrl() {
-    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-    const v = params.get('view')
-    return v === 'oppm' ? 'oppm' : 'todos'
-  }
-
-  let view = getViewFromUrl()
+  let view = readRoute().view
   let todoLayout = 'list'
   let darkMode = false
 
   function setView(v) {
     view = v
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href)
-      url.searchParams.set('view', v)
-      window.history.replaceState({}, '', url.pathname + '?' + url.searchParams.toString())
-    }
+    writeRoute({ view: v, planId: $currentPlanId })
     if (v === 'oppm') fetchPlans().then(() => fetchPlan($currentPlanId))
   }
 
@@ -44,12 +36,18 @@
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
     fetchAuthMe()
     fetchTodos()
-    const planId = initPlanFromUrl()
-    if (planId) currentPlanId.set(planId)
-    if (view === 'oppm') fetchPlans().then(() => fetchPlan(planId || $currentPlanId))
-    const onPopState = () => { view = getViewFromUrl() }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
+    const route = readRoute()
+    view = route.view
+    if (route.planId) currentPlanId.set(route.planId)
+    if (view === 'oppm') fetchPlans().then(() => fetchPlan(route.planId || $currentPlanId))
+    const off = onRouteChange((r) => {
+      view = r.view
+      if (r.planId) {
+        currentPlanId.set(r.planId)
+        fetchPlan(r.planId)
+      }
+    })
+    return off
   })
 </script>
 
@@ -98,6 +96,7 @@
   <section class="app-content">
     {#if view === 'oppm'}
       <OPPMPage />
+      <ActivityFeed />
     {:else}
       {#if $error}
         <div class="error" role="alert">Backend offline: {$error}. Start with <code>uvicorn main:app --reload</code> in backend/</div>

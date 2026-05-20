@@ -172,3 +172,34 @@ export function initPlanFromUrl() {
   const params = new URLSearchParams(window.location.search)
   return params.get('plan_id')
 }
+
+export async function fetchTemplates() {
+  const res = await apiFetch('/templates')
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function createPlanFromTemplate(templateId, planId = null, title = null) {
+  const q = new URLSearchParams({ template_id: templateId })
+  const res = await apiFetch(`/plan/from-template?${q}`, {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId, title }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  currentPlanId.set(data.id)
+  syncPlanUrl(data.id)
+  await fetchPlans()
+  await fetchPlan(data.id)
+  return data
+}
+
+export function exportIcalUrl(planId) {
+  const id = planId ?? get(currentPlanId)
+  return id ? `/_/backend/plan/export/ical?plan_id=${encodeURIComponent(id)}` : '/_/backend/plan/export/ical'
+}
+
+export function exportPrintUrl(planId) {
+  const id = planId ?? get(currentPlanId)
+  return id ? `/_/backend/plan/export/html?plan_id=${encodeURIComponent(id)}` : '/_/backend/plan/export/html'
+}

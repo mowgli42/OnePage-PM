@@ -12,11 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
+from attachments import AttachmentStore
 from audit import list_activity, log_action
 from auth import (
     AUTH_ENABLED,
@@ -26,7 +27,10 @@ from auth import (
     require_admin,
     require_read,
 )
-from storage import StorageError, dir_disk_usage, load_json, save_json
+from datastore import STORAGE_BACKEND, create_datastore
+from exports import plan_to_ical, plan_to_print_html
+from notifications import notifications_enabled, notify
+from storage import StorageError, dir_disk_usage
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -52,8 +56,11 @@ ARCHIVE_DIR = Path(os.environ.get("ARCHIVE_DIR", DATA_DIR / "plans_archive"))
 TODOS_JSON_PATH = Path(os.environ.get("TODOS_JSON_PATH", DATA_DIR / "todos.json"))
 USERS_JSON_PATH = Path(os.environ.get("USERS_JSON_PATH", DATA_DIR / "users.json"))
 AUDIT_JSONL_PATH = Path(os.environ.get("AUDIT_JSONL_PATH", DATA_DIR / "audit.jsonl"))
+ATTACHMENTS_DIR = Path(os.environ.get("ATTACHMENTS_DIR", DATA_DIR / "attachments"))
+ATTACHMENTS_INDEX = ATTACHMENTS_DIR / "index.json"
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
-for d in (DATA_DIR, PLANS_DIR, ARCHIVE_DIR):
+for d in (DATA_DIR, PLANS_DIR, ARCHIVE_DIR, ATTACHMENTS_DIR):
     try:
         d.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -206,7 +213,7 @@ DEFAULT_PLAN = {
 
 
 # ---------------------------------------------------------------------------
-# Todo persistence
+# Datastore (JSON or SQLite)
 # ---------------------------------------------------------------------------
 def _is_valid_todo(item: object) -> bool:
     return isinstance(item, dict) and all(k in item for k in ("id", "title", "completed", "created_at"))
@@ -225,24 +232,45 @@ def _normalize_todos(data: object) -> list[dict]:
     return valid if valid else [t.copy() for t in DEFAULT_TODOS]
 
 
+def _normalize_plan(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        return DEFAULT_PLAN.copy()
+    plan = {**DEFAULT_PLAN, **raw}
+    plan.setdefault("archived", False)
+    plan.setdefault("tasks", [])
+    plan.setdefault("comments", [])
+    return plan
+
+
+STORE = create_datastore(
+    data_dir=DATA_DIR,
+    todos_path=TODOS_JSON_PATH,
+    plans_dir=PLANS_DIR,
+    plan_json_path=PLAN_JSON_PATH,
+    archive_dir=ARCHIVE_DIR,
+    max_todo_backups=MAX_TODO_BACKUPS,
+    max_plan_backups=MAX_PLAN_BACKUPS,
+    normalize_todos=_normalize_todos,
+    normalize_plan=_normalize_plan,
+    default_todos=DEFAULT_TODOS,
+    default_plan=DEFAULT_PLAN,
+)
+
+ATTACHMENTS = AttachmentStore(ATTACHMENTS_DIR, ATTACHMENTS_INDEX)
+
+
 def _load_todos() -> list[dict]:
-    return load_json(TODOS_JSON_PATH, [t.copy() for t in DEFAULT_TODOS], normalize=_normalize_todos)
+    return STORE.load_todos()
 
 
 def _save_todos(todos: list[dict], user: str = "system") -> None:
     try:
-        save_json(TODOS_JSON_PATH, todos, max_backups=MAX_TODO_BACKUPS)
+        STORE.save_todos(todos)
         log_action(AUDIT_JSONL_PATH, user=user, action="save", resource="todos")
-    except StorageError as e:
+        notify("todos updated", f"{len(todos)} todos saved", user=user)
+    except (StorageError, OSError) as e:
         logger.exception("todo save failed")
         raise HTTPException(status_code=507, detail=str(e)) from e
-
-
-def _init_todos_store() -> list[dict]:
-    todos = _load_todos()
-    if not TODOS_JSON_PATH.exists():
-        _save_todos(todos)
-    return todos
 
 
 def reload_todos_from_disk() -> list[dict]:
@@ -251,89 +279,31 @@ def reload_todos_from_disk() -> list[dict]:
     return TODOS
 
 
-TODOS = _init_todos_store()
-
-
-# ---------------------------------------------------------------------------
-# Plan persistence
-# ---------------------------------------------------------------------------
-def _plan_path(plan_id: str) -> Path:
-    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in plan_id).strip() or "default"
-    return PLANS_DIR / f"{safe_id}.json"
-
-
-def _load_plan_file(path: Path) -> dict:
-    def norm(raw: object) -> dict:
-        if not isinstance(raw, dict):
-            return DEFAULT_PLAN.copy()
-        plan = {**DEFAULT_PLAN, **raw}
-        plan.setdefault("archived", False)
-        plan.setdefault("tasks", [])
-        plan.setdefault("comments", [])
-        return plan
-
-    return load_json(path, DEFAULT_PLAN.copy(), normalize=norm)
+TODOS = STORE.init_todos()
 
 
 def _load_plan(plan_id: str | None = None) -> dict:
-    if plan_id:
-        path = _plan_path(plan_id)
-        if plan_id == "default" and not path.exists() and PLAN_JSON_PATH.exists():
-            return _load_plan_file(PLAN_JSON_PATH)
-        return _load_plan_file(path)
-    return _load_plan_file(PLAN_JSON_PATH)
+    return STORE.load_plan(plan_id)
 
 
 def _save_plan(plan: dict, plan_id: str | None = None, user: str = "system") -> None:
     try:
-        if plan_id:
-            save_json(_plan_path(plan_id), plan, max_backups=MAX_PLAN_BACKUPS)
-        else:
-            save_json(PLAN_JSON_PATH, plan, max_backups=MAX_PLAN_BACKUPS)
+        STORE.save_plan(plan, plan_id)
         log_action(AUDIT_JSONL_PATH, user=user, action="save", resource=f"plan:{plan_id or 'default'}")
-    except StorageError as e:
+        title = (plan.get("header") or {}).get("projectTitle") or plan_id or "plan"
+        notify("plan saved", title, user=user)
+    except (StorageError, OSError) as e:
         logger.exception("plan save failed")
         raise HTTPException(status_code=507, detail=str(e)) from e
 
 
 def _next_project_number() -> int:
-    nums = []
-    for p in PLANS_DIR.glob("*.json"):
-        data = _load_plan_file(p)
-        n = data.get("projectNumber")
-        if isinstance(n, (int, float)):
-            nums.append(int(n))
-    return max(nums, default=1000) + 1
+    return STORE.next_project_number()
 
 
 def _list_plans(include_archived: bool = False, search: str = "") -> list[dict]:
-    out = []
     q = search.strip().lower()
-    for p in sorted(PLANS_DIR.glob("*.json")):
-        plan_id = p.stem
-        data = _load_plan_file(p)
-        if data.get("archived") and not include_archived:
-            continue
-        title = (data.get("header") or {}).get("projectTitle") or plan_id
-        if q and q not in title.lower() and q not in plan_id.lower():
-            continue
-        out.append({
-            "id": plan_id,
-            "title": title,
-            "projectId": data.get("projectId"),
-            "projectNumber": data.get("projectNumber"),
-            "archived": bool(data.get("archived")),
-        })
-    if not out and PLAN_JSON_PATH.exists():
-        data = _load_plan_file(PLAN_JSON_PATH)
-        title = (data.get("header") or {}).get("projectTitle") or "Default"
-        out.append({
-            "id": "default",
-            "title": title,
-            "projectId": data.get("projectId"),
-            "projectNumber": data.get("projectNumber"),
-            "archived": bool(data.get("archived")),
-        })
+    out = STORE.list_plans(include_archived, search)
     if not out and not q:
         _save_plan({**DEFAULT_PLAN}, "default")
         out.append({
@@ -567,6 +537,8 @@ def health():
     return {
         "status": "ok",
         "auth_enabled": AUTH_ENABLED,
+        "storage_backend": STORAGE_BACKEND,
+        "notifications_enabled": notifications_enabled(),
         "storage": storage,
     }
 
@@ -682,8 +654,7 @@ def get_plan(plan_id: str | None = None, _=Depends(require_read)):
 @app.post("/plan", status_code=201)
 def create_plan(body: PlanCreateInput, session=Depends(require_admin)):
     plan_id = _sanitize_plan_id(body.id or body.title or f"project-{uuid4().hex[:8]}")
-    path = _plan_path(plan_id)
-    if path.exists():
+    if STORE.plan_exists(plan_id):
         raise HTTPException(status_code=409, detail="Plan already exists")
     plan = _merge_plan({
         **DEFAULT_PLAN,
@@ -731,12 +702,10 @@ def delete_plan(plan_id: str | None = None, session=Depends(require_admin)):
         raise HTTPException(status_code=400, detail="plan_id query parameter required")
     if plan_id == "default":
         raise HTTPException(status_code=400, detail="Cannot delete default plan")
-    path = _plan_path(plan_id)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Plan not found")
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    archive_path = ARCHIVE_DIR / path.name
-    path.replace(archive_path)
+    try:
+        STORE.delete_plan(plan_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Plan not found") from None
     log_action(AUDIT_JSONL_PATH, user=session["username"], action="delete", resource=f"plan:{plan_id}")
     return None
 
@@ -751,7 +720,7 @@ def duplicate_plan(
         raise HTTPException(status_code=400, detail="plan_id query parameter required")
     source = _load_plan(plan_id)
     target_id = _sanitize_plan_id(new_id or f"{plan_id}-copy")
-    if _plan_path(target_id).exists():
+    if STORE.plan_exists(target_id):
         raise HTTPException(status_code=409, detail="Target plan id already exists")
     copy = json.loads(json.dumps(source))
     copy["projectId"] = str(uuid4())
@@ -781,6 +750,126 @@ def add_plan_comment(
     plan.setdefault("comments", []).append(comment)
     _save_plan(plan, plan_id, user=session["username"])
     return comment
+
+
+# ---------------------------------------------------------------------------
+# Routes — Templates, exports, attachments
+# ---------------------------------------------------------------------------
+@app.get("/templates")
+def list_templates(_=Depends(require_read)):
+    out = []
+    if TEMPLATES_DIR.exists():
+        for p in sorted(TEMPLATES_DIR.glob("*.json")):
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                title = (data.get("header") or {}).get("projectTitle") or p.stem
+            except (json.JSONDecodeError, OSError):
+                title = p.stem
+            out.append({"id": p.stem, "title": title})
+    return out
+
+
+class PlanFromTemplateInput(BaseModel):
+    plan_id: str | None = Field(None, max_length=80)
+    title: str | None = Field(None, max_length=300)
+
+
+@app.post("/plan/from-template", status_code=201)
+def create_plan_from_template(
+    template_id: str = Query(...),
+    body: PlanFromTemplateInput | None = None,
+    session=Depends(require_admin),
+):
+    path = TEMPLATES_DIR / f"{_sanitize_plan_id(template_id)}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Template not found")
+    try:
+        template_data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(status_code=500, detail="Invalid template file") from e
+    body = body or PlanFromTemplateInput()
+    plan_id = _sanitize_plan_id(body.plan_id or template_id)
+    if STORE.plan_exists(plan_id):
+        raise HTTPException(status_code=409, detail="Plan already exists")
+    merged = _merge_plan(template_data)
+    if body.title:
+        merged.setdefault("header", {})["projectTitle"] = body.title
+    _save_plan(merged, plan_id, user=session["username"])
+    return {"id": plan_id, "plan": merged}
+
+
+@app.get("/plan/export/ical")
+def export_plan_ical(plan_id: str | None = None, _=Depends(require_read)):
+    pid = plan_id or "default"
+    plan = _load_plan(pid)
+    content = plan_to_ical(plan, pid)
+    return PlainTextResponse(
+        content,
+        media_type="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="{pid}.ics"'},
+    )
+
+
+@app.get("/plan/export/html")
+def export_plan_html(plan_id: str | None = None, _=Depends(require_read)):
+    pid = plan_id or "default"
+    plan = _load_plan(pid)
+    return HTMLResponse(plan_to_print_html(plan, pid))
+
+
+@app.get("/attachments")
+def list_attachments(
+    plan_id: str | None = None,
+    todo_id: str | None = None,
+    _=Depends(require_read),
+):
+    return ATTACHMENTS.list_for(plan_id=plan_id, todo_id=todo_id)
+
+
+@app.post("/attachments", status_code=201)
+async def upload_attachment(
+    file: UploadFile = File(...),
+    plan_id: str | None = None,
+    todo_id: str | None = None,
+    session=Depends(require_admin),
+):
+    if not plan_id and not todo_id:
+        raise HTTPException(status_code=400, detail="plan_id or todo_id required")
+    content = await file.read()
+    try:
+        record = ATTACHMENTS.add(
+            file.filename or "upload",
+            content,
+            plan_id=plan_id,
+            todo_id=todo_id,
+            user=session["username"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
+    except StorageError as e:
+        raise HTTPException(status_code=507, detail=str(e)) from e
+    log_action(AUDIT_JSONL_PATH, user=session["username"], action="upload", resource=f"attachment:{record['id']}")
+    return record
+
+
+@app.get("/attachments/{attachment_id}")
+def download_attachment(attachment_id: str, _=Depends(require_read)):
+    try:
+        meta = ATTACHMENTS.get_meta(attachment_id)
+        path = ATTACHMENTS.get_path(attachment_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Attachment not found") from None
+    return FileResponse(path, filename=meta.get("filename") or path.name)
+
+
+@app.delete("/attachments/{attachment_id}", status_code=204)
+def delete_attachment(attachment_id: str, session=Depends(require_admin)):
+    try:
+        ATTACHMENTS.delete(attachment_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Attachment not found") from None
+    log_action(AUDIT_JSONL_PATH, user=session["username"], action="delete", resource=f"attachment:{attachment_id}")
+    return None
 
 
 if __name__ == "__main__":
