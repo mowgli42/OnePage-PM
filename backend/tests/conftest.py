@@ -11,7 +11,9 @@ import pytest
 # Set env before any test (or main) imports the app
 _TEST_PLAN_DIR = Path(tempfile.mkdtemp(prefix="oppm_test_"))
 _TEST_PLAN_PATH = _TEST_PLAN_DIR / "plan.json"
+_TEST_TODOS_PATH = _TEST_PLAN_DIR / "todos.json"
 os.environ["PLAN_JSON_PATH"] = str(_TEST_PLAN_PATH)
+os.environ["TODOS_JSON_PATH"] = str(_TEST_TODOS_PATH)
 
 
 @pytest.fixture
@@ -31,11 +33,36 @@ def reset_plan_file(plan_file):
 
 
 @pytest.fixture
-def client(reset_plan_file):
+def todos_file():
+    """Path to the test todos JSON file."""
+    return _TEST_TODOS_PATH
+
+
+@pytest.fixture(autouse=True)
+def reset_todos_file(todos_file):
+    """Reset todos file and in-memory store before each test."""
+    parent = todos_file.parent
+    for bak in parent.glob(f"{todos_file.name}.bak.*"):
+        bak.unlink(missing_ok=True)
+    if todos_file.exists():
+        todos_file.unlink()
+    yield
+    for bak in parent.glob(f"{todos_file.name}.bak.*"):
+        bak.unlink(missing_ok=True)
+    if todos_file.exists():
+        todos_file.unlink(missing_ok=True)
+
+
+@pytest.fixture
+def client(reset_plan_file, reset_todos_file):
     """FastAPI test client. Import app after env is set."""
     from fastapi.testclient import TestClient
-    from main import app
-    return TestClient(app)
+    import main
+
+    main.TODOS.clear()
+    main.TODOS.extend(t.copy() for t in main.DEFAULT_TODOS)
+    main._save_todos(main.TODOS)
+    return TestClient(main.app)
 
 
 @pytest.fixture

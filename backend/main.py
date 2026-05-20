@@ -4,6 +4,8 @@ Spec: openspec.md
 """
 import json
 import os
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -21,17 +23,22 @@ app = FastAPI(title="Project Management API", version="0.1.0")
 _BACKEND_DIR = Path(__file__).resolve().parent
 PLAN_JSON_PATH = Path(os.environ.get("PLAN_JSON_PATH", _BACKEND_DIR / "data" / "plan.json"))
 PLANS_DIR = Path(os.environ.get("PLANS_DIR", _BACKEND_DIR / "data" / "plans"))
+TODOS_JSON_PATH = Path(os.environ.get("TODOS_JSON_PATH", _BACKEND_DIR / "data" / "todos.json"))
 
 try:
     PLAN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
     PLANS_DIR.mkdir(parents=True, exist_ok=True)
+    TODOS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
 except OSError:
     PLAN_JSON_PATH = Path(os.environ.get("PLAN_JSON_PATH", "/tmp/data/plan.json"))
     PLANS_DIR = Path(os.environ.get("PLANS_DIR", "/tmp/data/plans"))
+    TODOS_JSON_PATH = Path(os.environ.get("TODOS_JSON_PATH", "/tmp/data/todos.json"))
     PLAN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
     PLANS_DIR.mkdir(parents=True, exist_ok=True)
+    TODOS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 MAX_TODOS = int(os.environ.get("MAX_TODOS", "200"))
+MAX_TODO_BACKUPS = int(os.environ.get("MAX_TODO_BACKUPS", "3"))
 MAX_REQUEST_BODY = int(os.environ.get("MAX_REQUEST_BODY", str(1_000_000)))  # 1 MB
 
 # CORS: env-configurable for deployment flexibility; defaults to local dev origins
@@ -70,9 +77,9 @@ async def limit_request_body(request: Request, call_next):
 
 
 # ---------------------------------------------------------------------------
-# In-memory todo store with sample mock data
+# Default todos (seeded to disk on first run when no todos.json exists)
 # ---------------------------------------------------------------------------
-TODOS = [
+DEFAULT_TODOS = [
     {
         "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "title": "Ship the app",
@@ -92,6 +99,87 @@ TODOS = [
         "created_at": "2026-02-19T08:30:00Z",
     },
 ]
+
+
+# ---------------------------------------------------------------------------
+# Todo persistence helpers
+# ---------------------------------------------------------------------------
+def _is_valid_todo(item: object) -> bool:
+    if not isinstance(item, dict):
+        return False
+    return all(k in item for k in ("id", "title", "completed", "created_at"))
+
+
+def _normalize_todos(data: object) -> list[dict]:
+    if not isinstance(data, list):
+        return [t.copy() for t in DEFAULT_TODOS]
+    valid = [dict(t) for t in data if _is_valid_todo(t)]
+    return valid if valid else [t.copy() for t in DEFAULT_TODOS]
+
+
+def _load_todos() -> list[dict]:
+    if not TODOS_JSON_PATH.exists():
+        return [t.copy() for t in DEFAULT_TODOS]
+    try:
+        with open(TODOS_JSON_PATH, encoding="utf-8") as f:
+            return _normalize_todos(json.load(f))
+    except (json.JSONDecodeError, OSError):
+        return [t.copy() for t in DEFAULT_TODOS]
+
+
+def _rotate_json_backups(path: Path, max_backups: int) -> None:
+    if max_backups < 1 or not path.exists():
+        return
+    for i in range(max_backups, 1, -1):
+        src = path.parent / f"{path.name}.bak.{i - 1}"
+        dst = path.parent / f"{path.name}.bak.{i}"
+        if src.exists():
+            if dst.exists():
+                dst.unlink()
+            shutil.copy2(src, dst)
+    bak1 = path.parent / f"{path.name}.bak.1"
+    if bak1.exists():
+        bak1.unlink()
+    shutil.copy2(path, bak1)
+
+
+def _atomic_write_json(path: Path, data: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _save_todos(todos: list[dict]) -> None:
+    _rotate_json_backups(TODOS_JSON_PATH, MAX_TODO_BACKUPS)
+    _atomic_write_json(TODOS_JSON_PATH, todos)
+
+
+def _init_todos_store() -> list[dict]:
+    """Load todos from disk; on first run (no file), persist default seed data."""
+    todos = _load_todos()
+    if not TODOS_JSON_PATH.exists():
+        _save_todos(todos)
+    return todos
+
+
+def reload_todos_from_disk() -> list[dict]:
+    """Reload in-memory todos from disk (used after simulated restart in tests)."""
+    global TODOS
+    TODOS = _load_todos()
+    return TODOS
+
+
+TODOS = _init_todos_store()
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +485,7 @@ def create_todo(body: TodoCreate):
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     TODOS.append(todo)
+    _save_todos(TODOS)
     return todo
 
 
@@ -408,6 +497,7 @@ def update_todo(todo_id: str, body: TodoUpdate):
                 TODOS[i]["title"] = body.title
             if body.completed is not None:
                 TODOS[i]["completed"] = body.completed
+            _save_todos(TODOS)
             return TODOS[i]
     raise HTTPException(status_code=404, detail="Todo not found")
 
@@ -417,6 +507,7 @@ def delete_todo(todo_id: str):
     for i, t in enumerate(TODOS):
         if t["id"] == todo_id:
             TODOS.pop(i)
+            _save_todos(TODOS)
             return
     raise HTTPException(status_code=404, detail="Todo not found")
 
