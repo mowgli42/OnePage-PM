@@ -9,7 +9,9 @@ def test_health(client):
     """Health check responds OK."""
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    data = r.json()
+    assert data["status"] == "ok"
+    assert "storage" in data
 
 
 def test_get_plan_returns_default_when_no_file(client):

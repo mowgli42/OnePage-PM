@@ -11,7 +11,16 @@ import pytest
 # Set env before any test (or main) imports the app
 _TEST_PLAN_DIR = Path(tempfile.mkdtemp(prefix="oppm_test_"))
 _TEST_PLAN_PATH = _TEST_PLAN_DIR / "plan.json"
+_TEST_TODOS_PATH = _TEST_PLAN_DIR / "todos.json"
+os.environ["DATA_DIR"] = str(_TEST_PLAN_DIR)
 os.environ["PLAN_JSON_PATH"] = str(_TEST_PLAN_PATH)
+os.environ["PLANS_DIR"] = str(_TEST_PLAN_DIR / "plans")
+os.environ["TODOS_JSON_PATH"] = str(_TEST_TODOS_PATH)
+os.environ["AUDIT_JSONL_PATH"] = str(_TEST_PLAN_DIR / "audit.jsonl")
+os.environ["USERS_JSON_PATH"] = str(_TEST_PLAN_DIR / "users.json")
+os.environ["AUTH_ENABLED"] = "false"
+os.environ["STORAGE_BACKEND"] = "json"
+os.environ["NOTIFY_ON_CHANGES"] = "false"
 
 
 @pytest.fixture
@@ -22,20 +31,51 @@ def plan_file():
 
 @pytest.fixture(autouse=True)
 def reset_plan_file(plan_file):
-    """Remove plan file before each test so GET /plan returns default unless we PUT."""
+    """Remove plan files before each test so GET /plan returns default unless we PUT."""
+    plans_dir = _TEST_PLAN_DIR / "plans"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    for p in plans_dir.glob("*.json"):
+        p.unlink()
     if plan_file.exists():
         plan_file.unlink()
     yield
+    for p in plans_dir.glob("*.json"):
+        p.unlink(missing_ok=True)
     if plan_file.exists():
         plan_file.unlink(missing_ok=True)
 
 
 @pytest.fixture
-def client(reset_plan_file):
+def todos_file():
+    """Path to the test todos JSON file."""
+    return _TEST_TODOS_PATH
+
+
+@pytest.fixture(autouse=True)
+def reset_todos_file(todos_file):
+    """Reset todos file and in-memory store before each test."""
+    parent = todos_file.parent
+    for bak in parent.glob(f"{todos_file.name}.bak.*"):
+        bak.unlink(missing_ok=True)
+    if todos_file.exists():
+        todos_file.unlink()
+    yield
+    for bak in parent.glob(f"{todos_file.name}.bak.*"):
+        bak.unlink(missing_ok=True)
+    if todos_file.exists():
+        todos_file.unlink(missing_ok=True)
+
+
+@pytest.fixture
+def client(reset_plan_file, reset_todos_file):
     """FastAPI test client. Import app after env is set."""
     from fastapi.testclient import TestClient
-    from main import app
-    return TestClient(app)
+    import main
+
+    main.TODOS.clear()
+    main.TODOS.extend(t.copy() for t in main.DEFAULT_TODOS)
+    main._save_todos(main.TODOS)
+    return TestClient(main.app)
 
 
 @pytest.fixture

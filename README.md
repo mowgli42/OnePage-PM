@@ -154,7 +154,7 @@ flowchart LR
 | Step | Action |
 |------|--------|
 | 1 | Open http://localhost:5173 (or ?view=oppm for OPPM directly). |
-| 2 | **Todos:** Add/toggle/delete tasks (in-memory; resets on backend restart). |
+| 2 | **Todos:** Add/toggle/delete tasks (persisted to `backend/data/todos.json`; survives restart). |
 | 3 | **OPPM:** View one-page plan (header, objectives × timeline matrix, budget, risks, status). |
 | 4 | Click **Edit plan** to open the edit panel (header, time periods, objectives, matrix, budget, status). |
 | 5 | Change fields (e.g. project title, add/remove periods or objectives, set matrix symbols/labels). |
@@ -246,11 +246,70 @@ For an AI coding agent:
 
 ---
 
+## Docker (self-hosted)
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+- Frontend: http://localhost:5173 (proxies `/_/backend` to the API)
+- Backend: http://localhost:8000
+- Data volume: `pm-data` mounted at `/data` in the backend container
+
+Backup: `./scripts/backup.sh` (archives `backend/data` or `DATA_DIR`).
+
+## Authentication (optional)
+
+Set `AUTH_ENABLED=true` and default users in `backend/data/users.json` (seeded on first run). Login via the UI or `POST /auth/login` with `{ "username", "password" }`. Admin can write; guest is read-only when `AUTH_ALLOW_GUEST_READ=true`.
+
+Default credentials (change in production): `admin` / `admin`, `guest` / `guest`.
+
+## Features (roadmap)
+
+| Area | Highlights |
+|------|------------|
+| **Persistence** | Todos + plans as JSON; atomic writes; rotating backups |
+| **Auth** | Bearer tokens, audit log, login throttling |
+| **Plans** | Create, duplicate, delete, archive, search, import/export JSON |
+| **Gantt** | Timeline tasks on plans with dependency warnings |
+| **Todos** | List + Kanban views |
+| **UX** | Dark mode, `?plan_id=` deep links, plan toolbar |
+
+### Follow-up features
+
+| Feature | Usage |
+|---------|--------|
+| **SQLite** | `STORAGE_BACKEND=sqlite` — auto-imports existing JSON on first run |
+| **Notifications** | `NOTIFY_ON_CHANGES=true` + `NTFY_TOPIC` or `SMTP_*` |
+| **Attachments** | Plan toolbar **Attach file**; `GET/POST /attachments` |
+| **Templates** | `GET /templates`; **Use template** in OPPM toolbar |
+| **iCal / Print** | Toolbar links — HTML export for browser Print-to-PDF |
+| **Activity** | Panel on OPPM view (`GET /activity`) |
+
+SvelteKit migration guide: [docs/SvelteKit-Migration.md](docs/SvelteKit-Migration.md) (deferred; app uses `frontend/src/lib/router.js`).
+
+---
+
 ## API Overview
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
+| GET | `/health` | Health + storage stats |
+| POST | `/auth/login` | Login (when auth enabled) |
+| GET | `/auth/me` | Current session |
+| GET | `/activity` | Audit log entries |
+| POST | `/plan` | Create new plan |
+| DELETE | `/plan` | Delete plan (`?plan_id=`) |
+| POST | `/plan/duplicate` | Duplicate plan |
+| PATCH | `/plan` | Update title/archive meta |
+| POST | `/todos/{id}/comments` | Add todo comment |
+| POST | `/plan/comments` | Add plan comment (`?plan_id=`) |
+| GET | `/templates` | List plan templates |
+| POST | `/plan/from-template` | Create plan from template (`?template_id=`) |
+| GET | `/plan/export/ical` | Download `.ics` calendar |
+| GET | `/plan/export/html` | Printable HTML (save as PDF) |
+| GET/POST/DELETE | `/attachments` | File attachments for plans/todos |
 | GET | `/plans` | List projects (id, title, projectId, projectNumber) |
 | GET | `/plan` | Get one plan. Query `plan_id` for multi-project. |
 | PUT | `/plan` | Save plan. Query `plan_id` optional. Body: full plan JSON. |
@@ -266,11 +325,17 @@ See `openspec.md` for full contracts and examples.
 
 ## Mock Data
 
-The backend starts with 3 sample todos (in-memory; resets on restart):
+The backend seeds 3 sample todos on first run (persisted to `backend/data/todos.json`):
 
 - "Ship the app" (pending)
 - "Write OpenSpec" (done)
 - "Set up Beads tracker" (done)
+
+Reset or re-seed todos:
+
+```bash
+python3 backend/scripts/seed_todos.py
+```
 
 **OPPM projects:** Use the seed script to create 4 mock projects with unique identifiers:
 
@@ -295,7 +360,7 @@ The app uses **file-based storage** with a **project identifier** so you can hos
 
 ### How it works
 
-- **Storage:** Each project is a JSON file in `backend/data/plans/` (or `PLANS_DIR`). Filename = plan id (e.g. `regional-pilot.json`).
+- **Storage:** Todos in `backend/data/todos.json` (or `TODOS_JSON_PATH`). Each project plan is a JSON file in `backend/data/plans/` (or `PLANS_DIR`). Filename = plan id (e.g. `regional-pilot.json`).
 - **Project identifier:** Every plan has:
   - **projectId** – UUID set by the server on first save; uniquely identifies the project when sharing or importing.
   - **projectNumber** – Optional integer (e.g. 1001, 1002) for display; server assigns the next available number if missing.
@@ -321,7 +386,7 @@ The app uses **file-based storage** with a **project identifier** so you can hos
 
 | Goal | Approach |
 |------|----------|
-| Run locally | Backend + frontend; data in `backend/data/plans/`. |
+| Run locally | Backend + frontend; data in `backend/data/` (`todos.json` + `plans/`). |
 | Share across team | Deploy backend with shared volume; everyone uses same URL. |
 | Share without central host | Export project JSON; others import the file into their `PLANS_DIR`. |
 | Uniquely identify a project | Use **projectId** (UUID) in the JSON; **projectNumber** for human reference. |

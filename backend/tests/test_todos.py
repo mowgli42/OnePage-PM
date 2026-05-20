@@ -58,3 +58,19 @@ def test_delete_todo(client):
     r3 = client.get("/todos")
     ids = [t["id"] for t in r3.json()]
     assert created["id"] not in ids
+
+
+def test_todos_persist_across_reload(client, todos_file):
+    """Todos written to disk survive a simulated backend restart."""
+    r = client.post("/todos", json={"title": "Survives restart", "completed": False})
+    assert r.status_code == 201
+    todo_id = r.json()["id"]
+    assert todos_file.exists()
+
+    import main
+
+    main.reload_todos_from_disk()
+
+    r2 = client.get(f"/todos/{todo_id}")
+    assert r2.status_code == 200
+    assert r2.json()["title"] == "Survives restart"

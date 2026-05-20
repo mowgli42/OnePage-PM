@@ -19,7 +19,7 @@ test.describe('App workflow', () => {
   test('OPPM view loads and shows plan', async ({ page }) => {
     await page.goto('/?view=oppm')
     await expect(page.locator('.oppm')).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('.oppm-header')).toContainText('Project')
+    await expect(page.locator('.oppm-project-title, .oppm-header')).toContainText('Project')
     await expect(page.locator('.oppm-matrix')).toBeVisible()
   })
 

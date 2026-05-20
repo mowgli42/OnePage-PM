@@ -1,0 +1,22 @@
+{
+  "header": {
+    "projectTitle": "Grant Proposal – Research Pilot",
+    "sponsor": "Funding Office",
+    "projectManager": "Dr. Lee",
+    "startDate": "Apr 1, 2026",
+    "endDate": "Sep 30, 2026",
+    "reportingPeriod": "Q2 2026",
+    "version": "v0.1",
+    "dateUpdated": "May 20, 2026"
+  },
+  "quarters": ["Q2 2026", "Q3 2026"],
+  "objectives": [{"id": "O1", "title": "Submit proposal", "metric": "Submitted", "owner": "DL"}],
+  "matrix": [[{"symbol": "●", "label": "Submitted"}, {"symbol": "○", "label": "Review"}]],
+  "owners": [{"initials": "DL", "role": "PI"}],
+  "budget": {"total": 75000, "spent": 0, "categories": [{"name": "Research", "planned": 75000, "spent": 0}]},
+  "risks": [{"text": "Deadline", "owner": "DL", "mitigation": "Draft ready"}],
+  "kpis": [],
+  "status": {"level": "green", "text": "Template: grant proposal."},
+  "tasks": [],
+  "comments": []
+}
