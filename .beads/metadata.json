@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "OnePage_PM",
+  "project_id": "87ec10eb-03b7-4b8f-9517-2f3abce2c674"
+}
