@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store'
 
-const API = 'http://localhost:8000'
+const API = '/_/backend'
 
 export const todos = writable([])
 export const loading = writable(false)
