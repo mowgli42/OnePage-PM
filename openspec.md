@@ -1,7 +1,8 @@
 # Project Management App — OpenSpec
 
 > Single source-of-truth for architecture, API contracts, and data models.  
-> Workflow: Propose changes here → Apply → Update Beads.
+> Workflow: Propose changes here → Apply → Update Beads.  
+> Behavior scenarios (Gherkin): `features/*.feature` — aligned with endpoints and UI below; Playwright e2e in `frontend/e2e/` exercises the same happy paths.
 
 ---
 
@@ -144,3 +145,4 @@ Design system (v2.0): typography (display + body pair), color palette (base, sur
 | 2026-02-22 | Display items (UI): section 4 listing app shell, Todos view, OPPM view; design system v2.0 reference |
 | 2026-02-22 | Frontend 2.0 facelift: design system (Fraunces + Source Sans 3, slate/cream/amber), app shell tabs, TodoForm/TodoList/OPPM styling, a11y (focus, aria) |
 | 2026-02-22 | Plan: projectId (UUID) and projectNumber; GET /plans returns both; PUT ensures projectId/projectNumber for sharing; README workflow and mock data (4 projects) |
+| 2026-07-30 | Gherkin: `features/{todos,oppm-plan,health}.feature` for core happy paths (Todos/OPPM UI, plan persistence, health/todos/plan API) |
