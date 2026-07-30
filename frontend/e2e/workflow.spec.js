@@ -27,7 +27,8 @@ test.describe('App workflow', () => {
   test('Edit plan opens panel and shows schedule sections', async ({ page }) => {
     await page.goto('/?view=oppm')
     await expect(page.locator('.oppm')).toBeVisible({ timeout: 10000 })
-    await page.click('button:has-text("Edit plan")')
+    // Header control is icon-only; match accessible name (aria-label)
+    await page.getByRole('button', { name: 'Edit plan' }).click()
     await expect(page.locator('.edit-panel')).toBeVisible()
     await expect(page.locator('.edit-panel h3')).toContainText('Edit project plan')
     await expect(page.locator('.edit-section:has-text("Schedule")')).toBeVisible()
@@ -57,7 +58,14 @@ test.describe('App workflow', () => {
       status: { level: 'green', text: 'E2E test.' },
     }
 
-    const putRes = await request.put(`${API}/plan`, { data: mockPlan })
+    // UI loads the first plan from GET /plans (typically plan_id=default), not legacy /plan alone
+    const plansRes = await request.get(`${API}/plans`)
+    expect(plansRes.ok()).toBeTruthy()
+    const plans = await plansRes.json()
+    const planId = plans?.[0]?.id || 'default'
+    const putRes = await request.put(`${API}/plan?plan_id=${encodeURIComponent(planId)}`, {
+      data: mockPlan,
+    })
     expect(putRes.ok()).toBeTruthy()
 
     await page.goto('/?view=oppm')
