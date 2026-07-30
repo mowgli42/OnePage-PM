@@ -1,6 +1,82 @@
 # Project Management App
 
-A simple full-stack one-page project management app built with **Svelte** (frontend), **FastAPI** (backend), and a **vibe coding workflow** using **OpenSpec** and **Beads**.
+A one-page project management app: manage a simple **todo list**, and edit/save **NASS-style One Page Project Manager (OPPM)** plans (header, objectives × timeline, budget, risks, status). Built with **Svelte** + **Vite** (frontend) and **FastAPI** (backend). Todos are in-memory; OPPM plans persist as JSON files. Spec-driven with **OpenSpec** (`openspec.md`) and tracked with **Beads**.
+
+---
+
+## Screenshots
+
+![Todos view](docs/screenshots/01-todos-view.png)
+
+![OPPM full view](docs/screenshots/02-oppm-full.png)
+
+![Edit plan panel](docs/screenshots/04-edit-plan.png)
+
+More walkthrough shots (matrix detail, schedule edit) live in [docs/screenshots/](docs/screenshots/). To regenerate them, see [Capturing screenshots](#capturing-screenshots).
+
+---
+
+## Architecture
+
+Browser → Svelte/Vite frontend → FastAPI backend → JSON plan files (no database). In production on Vercel, the frontend is served at `/` and the API at `/_/backend`.
+
+```mermaid
+flowchart LR
+  Browser[Browser]
+  FE[Svelte + Vite frontend<br/>port 5173 / Vercel /]
+  BE[FastAPI backend<br/>port 8000 / Vercel /_/backend]
+  Plans[JSON plan files<br/>backend/data/plans/]
+  Mem[In-memory todos]
+
+  Browser --> FE
+  FE -->|HTTP JSON<br/>/plan /plans /todos /health| BE
+  BE --> Plans
+  BE --> Mem
+```
+
+Full contracts and data models: [`openspec.md`](openspec.md).
+
+---
+
+## Sequence: edit and save an OPPM plan
+
+Primary flow: open OPPM → edit → save → reload shows persisted plan.
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant UI as Svelte OPPM UI
+  participant API as FastAPI
+  participant Disk as JSON plan file
+
+  User->>UI: Open app (?view=oppm)
+  UI->>API: GET /plan
+  API->>Disk: Read plan JSON
+  Disk-->>API: Plan
+  API-->>UI: Plan JSON
+  UI-->>User: Render one-page plan
+
+  User->>UI: Edit plan + Save
+  UI->>API: PUT /plan (full plan body)
+  API->>Disk: Write plan JSON
+  Disk-->>API: OK
+  API-->>UI: Saved plan
+
+  User->>UI: Reload
+  UI->>API: GET /plan
+  API->>Disk: Read plan JSON
+  API-->>UI: Persisted plan
+```
+
+App-level view switching (Todos ↔ OPPM) and a step table are under [App workflow](#app-workflow-user).
+
+---
+
+## Remaining / planned capabilities
+
+- **Gherkin scenarios** for core happy paths ([#10](https://github.com/mowgli42/OnePage-PM/issues/10))
+- **E2E selector alignment** for OPPM header tests ([#11](https://github.com/mowgli42/OnePage-PM/issues/11))
+- **Optional SQLite** for multi-project storage (see [docs/Project-Plan-Persistence-Proposal.md](docs/Project-Plan-Persistence-Proposal.md)); today plans are JSON files under `PLANS_DIR`
 
 ---
 
@@ -160,8 +236,6 @@ flowchart LR
 | 5 | Change fields (e.g. project title, add/remove periods or objectives, set matrix symbols/labels). |
 | 6 | Click the **save** button (save icon) in the edit panel to persist to the backend JSON file. |
 | 7 | Reload the page (or open in a new tab) – the saved plan is loaded. |
-
-Screenshots for the workflow are in [docs/screenshots/](docs/screenshots/) (see [Capturing screenshots](#capturing-screenshots)).
 
 ---
 
@@ -358,7 +432,7 @@ The OPPM view is laid out for **single-page printing** (A4 landscape):
 
 ---
 
-## App Walkthrough (with Screenshots)
+## App Walkthrough (detail)
 
 This section walks through the app using mock data. Start the backend and frontend (see [Running the App](#running-the-app)), then open http://localhost:5173.
 
@@ -412,7 +486,7 @@ Click **Edit plan** (pencil icon) on the OPPM tab to open the edit panel. Change
 
 ![Schedule edit section](docs/screenshots/05-schedule-edit.png)
 
-### Capturing Screenshots
+### Capturing screenshots
 
 To regenerate the walkthrough screenshots:
 
