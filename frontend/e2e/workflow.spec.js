@@ -19,7 +19,8 @@ test.describe('App workflow', () => {
   test('OPPM view loads and shows plan', async ({ page }) => {
     await page.goto('/?view=oppm')
     await expect(page.locator('.oppm')).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('.oppm-header')).toContainText('Project')
+    await expect(page.locator('.oppm-project-title')).toBeVisible()
+    await expect(page.locator('.oppm-header')).toBeVisible()
     await expect(page.locator('.oppm-matrix')).toBeVisible()
   })
 
@@ -61,7 +62,7 @@ test.describe('App workflow', () => {
 
     await page.goto('/?view=oppm')
     await expect(page.locator('.oppm')).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('.oppm-header')).toContainText('E2E Test Project')
+    await expect(page.locator('.oppm-project-title')).toContainText('E2E Test Project')
     await expect(page.locator('.oppm-header')).toContainText('E2E Sponsor')
     await expect(page.locator('.oppm-matrix')).toContainText('E2E objective')
   })

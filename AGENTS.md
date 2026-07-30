@@ -19,10 +19,6 @@ Full-stack project management app: Svelte 4 + Vite frontend (port 5173) and Fast
 - **E2E tests (Playwright):** `cd frontend && npx playwright test` — requires backend running on port 8000; Playwright auto-starts the frontend dev server in non-CI mode.
 - **Playwright browsers:** `npx playwright install --with-deps chromium` (one-time; already installed in snapshot).
 
-### Known issues
-
-- 3 of 4 Playwright E2E tests have pre-existing failures: the tests expect project title text inside `.oppm-header`, but the component renders the title in a separate element above the header. Only the "Todos view loads" test passes.
-
 ### Vercel deployment
 
 - `vercel.json` uses `experimentalServices` with two services: `frontend` (Vite at `/`) and `backend` (FastAPI at `/_/backend`).
