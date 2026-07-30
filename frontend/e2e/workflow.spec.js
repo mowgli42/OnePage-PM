@@ -31,9 +31,9 @@ test.describe('App workflow', () => {
     await page.getByRole('button', { name: 'Edit plan' }).click()
     await expect(page.locator('.edit-panel')).toBeVisible()
     await expect(page.locator('.edit-panel h3')).toContainText('Edit project plan')
-    await expect(page.locator('.edit-section:has-text("Schedule")')).toBeVisible()
-    await expect(page.locator('.edit-section:has-text("Time periods")')).toBeVisible()
-    await expect(page.locator('.edit-section:has-text("Objectives")')).toBeVisible()
+    await expect(page.locator('.edit-section h4', { hasText: 'Schedule – Time periods' })).toBeVisible()
+    await expect(page.locator('.edit-section h4', { hasText: 'Schedule – Objectives' })).toBeVisible()
+    await expect(page.locator('.edit-section h4', { hasText: 'Schedule – Matrix' })).toBeVisible()
   })
 
   test('Save plan persists and reload shows data', async ({ page, request }) => {
