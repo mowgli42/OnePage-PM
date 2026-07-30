@@ -9,6 +9,7 @@ A simple full-stack one-page project management app built with **Svelte** (front
 ```
 .
 ├── openspec.md           # Single source-of-truth: architecture, endpoints, data models
+├── features/             # Gherkin scenarios for core happy paths (aligned with OpenSpec / e2e)
 ├── docs/
 │   ├── OPPM-Proposal.md  # OPPM template and proposal
 │   └── screenshots/      # Walkthrough screenshots
