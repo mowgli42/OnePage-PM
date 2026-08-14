@@ -1,6 +1,97 @@
 # Project Management App
 
-A simple full-stack one-page project management app built with **Svelte** (frontend), **FastAPI** (backend), and a **vibe coding workflow** using **OpenSpec** and **Beads**.
+One-page project management: a **Svelte** UI and **FastAPI** backend for a todo list and a printable NASS-style One Page Project Manager (OPPM). Todos live in memory; OPPM plans are JSON files on disk—no database.
+
+---
+
+## Screenshots
+
+![Todos view](docs/screenshots/01-todos-view.png)
+
+![OPPM full view](docs/screenshots/02-oppm-full.png)
+
+![Edit plan panel](docs/screenshots/04-edit-plan.png)
+
+More walkthrough images (matrix, schedule edit) are under [docs/screenshots/](docs/screenshots/).
+
+---
+
+## Architecture
+
+Svelte frontend ↔ FastAPI backend ↔ JSON files (plans) and in-memory todos. Full contracts: [`openspec.md`](openspec.md).
+
+```mermaid
+flowchart LR
+  UI[Svelte + Vite<br/>port 5173]
+  API[FastAPI<br/>port 8000]
+  Plans[(JSON plans<br/>backend/data/plans)]
+  Todos[(In-memory<br/>todos)]
+  UI -->|HTTP /_/backend| API
+  API --> Plans
+  API --> Todos
+```
+
+---
+
+## Sequence diagrams
+
+### Load and save an OPPM plan
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant UI as Svelte UI
+  participant API as FastAPI
+  participant Disk as JSON plans dir
+
+  User->>UI: Open OPPM tab
+  UI->>API: GET /plans
+  API->>Disk: list *.json
+  API-->>UI: plan list
+  UI->>API: GET /plan?plan_id=…
+  API->>Disk: read plan
+  API-->>UI: plan JSON
+  User->>UI: Edit plan → Save
+  UI->>API: PUT /plan?plan_id=…
+  API->>Disk: write plan JSON
+  API-->>UI: saved plan
+```
+
+### App workflow (overview)
+
+```mermaid
+flowchart LR
+  subgraph open [Open app]
+    A[Load app]
+    B[Todos view]
+    C[OPPM view]
+  end
+  subgraph edit [Edit plan]
+    D[Edit plan]
+    E["Header, Schedule, Budget"]
+    F[Save plan]
+  end
+  subgraph persist [Persistence]
+    G[JSON file]
+    H[Reload]
+  end
+  A --> B
+  A --> C
+  C --> D
+  D --> E
+  E --> F
+  F --> G
+  G --> H
+  H --> C
+```
+
+---
+
+## Remaining / planned capabilities
+
+- Gherkin scenarios for core happy paths ([#16](https://github.com/mowgli42/OnePage-PM/issues/16))
+- Align Playwright E2E selectors with OPPM title/header markup (known test drift)
+- Optional SQLite (or similar) persistence instead of JSON-only plans — see [docs/Project-Plan-Persistence-Proposal.md](docs/Project-Plan-Persistence-Proposal.md)
 
 ---
 
@@ -122,34 +213,6 @@ chmod +x scripts/bd-ready.sh scripts/bd
 ---
 
 ## App workflow (user)
-
-The main user flow: open app → switch between Todos and OPPM → edit plan (header, schedule, budget) → save → reload to see persisted plan.
-
-```mermaid
-flowchart LR
-  subgraph open [Open app]
-    A[Load app]
-    B[Todos view]
-    C[OPPM view]
-  end
-  subgraph edit [Edit plan]
-    D[Edit plan]
-    E["Header, Schedule, Budget"]
-    F[Save plan]
-  end
-  subgraph persist [Persistence]
-    G[JSON file]
-    H[Reload]
-  end
-  A --> B
-  A --> C
-  C --> D
-  D --> E
-  E --> F
-  F --> G
-  G --> H
-  H --> C
-```
 
 | Step | Action |
 |------|--------|
